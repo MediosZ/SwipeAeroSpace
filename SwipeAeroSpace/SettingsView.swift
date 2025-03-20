@@ -4,6 +4,9 @@ struct SettingsView: View {
     @AppStorage("aerospace") private static var aerospace: String =
         "/opt/homebrew/bin/aerospace"
     @AppStorage("threshold") private static var swipeThreshold: Double = 0.3
+    
+    @AppStorage("wrap") private var wrapWorkspace: Bool = false
+    @AppStorage("natrual") private var naturalSwipe: Bool = true
 
     @State private var isValid = true
     @State private var numberFormatter: NumberFormatter = {
@@ -35,7 +38,17 @@ struct SettingsView: View {
                     prompt: Text("0.3")
                 ).textFieldStyle(RoundedBorderTextFieldStyle()).frame(
                     maxWidth: 200)
-
+                
+                VStack(alignment: .leading){
+                    Toggle("Wrap Workspace", isOn: $wrapWorkspace)
+                    Text("Enable to jump between first and last workspaces").foregroundStyle(.secondary)
+                }.padding(.vertical, 4)
+                
+                VStack(alignment: .leading){
+                    Toggle("Natural Swipe", isOn: $naturalSwipe)
+                    Text("Disable to use reversed swipe ").foregroundStyle(.secondary)
+                }.padding(.vertical, 4)
+                
                 LaunchAtLogin.Toggle {
                     Text("Launch At Login")
                 }
