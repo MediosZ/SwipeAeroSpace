@@ -7,6 +7,7 @@ struct SettingsView: View {
     
     @AppStorage("wrap") private var wrapWorkspace: Bool = false
     @AppStorage("natrual") private var naturalSwipe: Bool = true
+    @AppStorage("skip-empty") private var skipEmpty: Bool = false
 
     @State private var isValid = true
     @State private var numberFormatter: NumberFormatter = {
@@ -48,6 +49,12 @@ struct SettingsView: View {
                     Toggle("Natural Swipe", isOn: $naturalSwipe)
                     Text("Disable to use reversed swipe ").foregroundStyle(.secondary)
                 }.padding(.vertical, 4)
+                
+                VStack(alignment: .leading){
+                    Toggle("Skip Empty Workspace", isOn: $skipEmpty)
+                    Text("Enable to skip empty workspaces").foregroundStyle(.secondary)
+                }.padding(.vertical, 4)
+                
                 
                 LaunchAtLogin.Toggle {
                     Text("Launch At Login")

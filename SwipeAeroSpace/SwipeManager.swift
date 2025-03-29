@@ -24,13 +24,14 @@ enum GestureState {
     case cancelled
 }
 
-func switchWorkspace(executable: String, direction: Direction, wrapWorkspace: Bool) -> String {
+func switchWorkspace(executable: String, direction: Direction, wrapWorkspace: Bool, skipEmpty: Bool) -> String {
     let wrap = wrapWorkspace ? "--wrap-around" : ""
+    let skip_empty_command = skipEmpty ? "\(executable) list-workspaces --monitor focused --empty no |" : ""
     let task = Process()
     task.launchPath = "/bin/bash"
     task.arguments = [
         "-c",
-        "\(executable) workspace $(\(executable) list-workspaces --monitor mouse --visible) && \(executable) workspace \(wrap) \(direction.value)",
+        "\(executable) workspace $(\(executable) list-workspaces --monitor mouse --visible) && \(skip_empty_command) \(executable) workspace \(wrap) \(direction.value)",
     ]
     let pipe = Pipe()
     task.standardOutput = pipe
@@ -54,6 +55,7 @@ class SwipeManager {
     @AppStorage("threshold") private static var swipeThreshold: Double = 0.3
     @AppStorage("wrap") private static var wrapWorkspace: Bool = false
     @AppStorage("natrual") private static var naturalSwipe: Bool = true
+    @AppStorage("skip-empty") private static var skipEmpty: Bool = false
 
     private static var eventTap: CFMachPort? = nil
     // Event state.
@@ -62,11 +64,11 @@ class SwipeManager {
     private static var state: GestureState = .ended
 
     public static func nextWorkspace() {
-        let _ = switchWorkspace(executable: aerospace, direction: .next, wrapWorkspace: wrapWorkspace)
+        let _ = switchWorkspace(executable: aerospace, direction: .next, wrapWorkspace: wrapWorkspace, skipEmpty: skipEmpty)
     }
 
     public static func prevWorkspace() {
-        let _ = switchWorkspace(executable: aerospace, direction: .prev, wrapWorkspace: wrapWorkspace)
+        let _ = switchWorkspace(executable: aerospace, direction: .prev, wrapWorkspace: wrapWorkspace, skipEmpty: skipEmpty)
     }
 
     static func start() {
@@ -167,7 +169,7 @@ class SwipeManager {
             accDisX < 0 ? .prev : .next
         }
         let _ = switchWorkspace(
-            executable: aerospace, direction: direction, wrapWorkspace: wrapWorkspace)
+            executable: aerospace, direction: direction, wrapWorkspace: wrapWorkspace, skipEmpty: skipEmpty)
     }
 
     private static func horizontalSwipeDistance(touches: Set<NSTouch>) -> Float
