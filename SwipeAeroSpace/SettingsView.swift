@@ -1,15 +1,11 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @AppStorage("aerospace") private static var aerospace: String =
-        "/opt/homebrew/bin/aerospace"
     @AppStorage("threshold") private static var swipeThreshold: Double = 0.3
-    
     @AppStorage("wrap") private var wrapWorkspace: Bool = false
     @AppStorage("natrual") private var naturalSwipe: Bool = true
     @AppStorage("skip-empty") private var skipEmpty: Bool = false
-
-    @State private var isValid = true
+    
     @State private var numberFormatter: NumberFormatter = {
         var nf = NumberFormatter()
         nf.numberStyle = .decimal
@@ -18,7 +14,7 @@ struct SettingsView: View {
     
     var swipeManager: SwipeManager
     @ObservedObject var socketInfo: SocketInfo
-
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading){
@@ -35,8 +31,8 @@ struct SettingsView: View {
             }
             Form{
                 TextField("Swipe Threshold", value: SettingsView.$swipeThreshold,
-                    formatter: numberFormatter,
-                    prompt: Text("0.3")
+                          formatter: numberFormatter,
+                          prompt: Text("0.3")
                 ).textFieldStyle(RoundedBorderTextFieldStyle()).frame(maxWidth: 200)
             }
             
@@ -61,7 +57,7 @@ struct SettingsView: View {
         }
         .padding(.horizontal, 32)
         .padding(.vertical, 24)
-
+        
     }
 }
 

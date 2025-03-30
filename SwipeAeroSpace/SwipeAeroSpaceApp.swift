@@ -7,27 +7,10 @@
 
 import SwiftUI
 
-func requestAccessibilityPermission(completion: @escaping () -> Void) {
-    let isAccessibilityPermissionGranted =
-        PrivacyHelper.isProcessTrustedWithPrompt()
-    debugPrint("Accessibility permission", isAccessibilityPermissionGranted)
-    if isAccessibilityPermissionGranted {
-        completion()
-    } else {
-        Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { timer in
-            if AXIsProcessTrusted() {
-                debugPrint("Accessibility permission granted")
-                timer.invalidate()
-                completion()
-            }
-        }
-    }
-}
-
 @available(macOS 14.0, *)
 struct SettingsButton: View {
     @Environment(\.openSettings) private var openSettings
-
+    
     var body: some View {
         Button("Settings") {
             openSettings()
@@ -48,12 +31,12 @@ struct SwipeAeroSpaceApp: App {
     @AppStorage("menuBarExtraIsInserted") var menuBarExtraIsInserted = true
     @Environment(\.openWindow) private var openWindow
     @State var swipeManager = SwipeManager()
-
+    
     init() {
         checkAccessibilityPermissions()
         swipeManager.start()
     }
-
+    
     var body: some Scene {
         MenuBarExtra(
             "Screenshots",
@@ -66,7 +49,7 @@ struct SwipeAeroSpaceApp: App {
             Button("Prev Workspace") {
                 swipeManager.prevWorkspace()
             }
-
+            
             if #available(macOS 14.0, *) {
                 SettingsButton()
             }
@@ -77,22 +60,22 @@ struct SwipeAeroSpaceApp: App {
                     Text("Settings")
                 })
             }
-
+            
             Button("About") {
                 openWindow(id: "about")
             }
             Divider()
-
+            
             Button("Quit") {
                 swipeManager.stop()
                 NSApplication.shared.terminate(nil)
             }.keyboardShortcut("q")
         }
-
+        
         Settings {
             SettingsView(swipeManager: swipeManager, socketInfo: swipeManager.socketInfo)
         }.windowResizability(.contentSize)
-
+        
         WindowGroup(id: "about") {
             AboutView()
         }.windowResizability(.contentSize)
