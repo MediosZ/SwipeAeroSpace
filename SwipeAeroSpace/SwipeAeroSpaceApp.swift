@@ -35,15 +35,23 @@ struct SettingsButton: View {
     }
 }
 
+func checkAccessibilityPermissions() {
+    let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue() as String: true]
+    if !AXIsProcessTrustedWithOptions(options as CFDictionary) {
+        _ = try? Process.run(URL(filePath: "/usr/bin/tccutil"), arguments: ["reset", "Accessibility", "club.mediosz.SwipeAeroSpace"])
+        NSApplication.shared.terminate(nil)
+    }
+}
+
 @main
 struct SwipeAeroSpaceApp: App {
     @AppStorage("menuBarExtraIsInserted") var menuBarExtraIsInserted = true
     @Environment(\.openWindow) private var openWindow
+    @State var swipeManager = SwipeManager()
 
     init() {
-        requestAccessibilityPermission {
-            SwipeManager.start()
-        }
+        checkAccessibilityPermissions()
+        swipeManager.start()
     }
 
     var body: some Scene {
@@ -53,10 +61,10 @@ struct SwipeAeroSpaceApp: App {
             isInserted: $menuBarExtraIsInserted
         ) {
             Button("Next Workspace") {
-                SwipeManager.nextWorkspace()
+                swipeManager.nextWorkspace()
             }
             Button("Prev Workspace") {
-                SwipeManager.prevWorkspace()
+                swipeManager.prevWorkspace()
             }
 
             if #available(macOS 14.0, *) {
@@ -76,12 +84,13 @@ struct SwipeAeroSpaceApp: App {
             Divider()
 
             Button("Quit") {
+                swipeManager.stop()
                 NSApplication.shared.terminate(nil)
             }.keyboardShortcut("q")
         }
 
         Settings {
-            SettingsView()
+            SettingsView(swipeManager: swipeManager, socketInfo: swipeManager.socketInfo)
         }.windowResizability(.contentSize)
 
         WindowGroup(id: "about") {

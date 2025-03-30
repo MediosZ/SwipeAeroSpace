@@ -15,50 +15,48 @@ struct SettingsView: View {
         nf.numberStyle = .decimal
         return nf
     }()
+    
+    var swipeManager: SwipeManager
+    @ObservedObject var socketInfo: SocketInfo
 
     var body: some View {
-        VStack(alignment: .center, spacing: 16) {
-            Form {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading){
                 HStack {
-                    TextField(
-                        "AeroSpace Location:", text: SettingsView.$aerospace,
-                        prompt: Text("/opt/homebrew/bin/aerospace")
-                    ).textFieldStyle(RoundedBorderTextFieldStyle())
-                        .disableAutocorrection(true)
-                        .onSubmit {
-                            isValid = FileManager.default.fileExists(
-                                atPath: SettingsView.aerospace)
-                        }
+                    Text("Socket Status: ")
                     Image(systemName: "circle.fill").foregroundStyle(
-                        isValid ? .green : .red)
+                        socketInfo.socketConnected ? .green : .red)
                 }
-
-                TextField(
-                    "Swipe Threshold:", value: SettingsView.$swipeThreshold,
+                if !socketInfo.socketConnected {
+                    Button("Try to connect socket") {
+                        swipeManager.connectSocket(reconnect: true)
+                    }
+                }
+            }
+            Form{
+                TextField("Swipe Threshold", value: SettingsView.$swipeThreshold,
                     formatter: numberFormatter,
                     prompt: Text("0.3")
-                ).textFieldStyle(RoundedBorderTextFieldStyle()).frame(
-                    maxWidth: 200)
-                
-                VStack(alignment: .leading){
-                    Toggle("Wrap Workspace", isOn: $wrapWorkspace)
-                    Text("Enable to jump between first and last workspaces").foregroundStyle(.secondary)
-                }.padding(.vertical, 4)
-                
-                VStack(alignment: .leading){
-                    Toggle("Natural Swipe", isOn: $naturalSwipe)
-                    Text("Disable to use reversed swipe ").foregroundStyle(.secondary)
-                }.padding(.vertical, 4)
-                
-                VStack(alignment: .leading){
-                    Toggle("Skip Empty Workspace", isOn: $skipEmpty)
-                    Text("Enable to skip empty workspaces").foregroundStyle(.secondary)
-                }.padding(.vertical, 4)
-                
-                
-                LaunchAtLogin.Toggle {
-                    Text("Launch At Login")
-                }
+                ).textFieldStyle(RoundedBorderTextFieldStyle()).frame(maxWidth: 200)
+            }
+            
+            VStack(alignment: .leading){
+                Toggle("Wrap Workspace", isOn: $wrapWorkspace)
+                Text("Enable to jump between first and last workspaces").foregroundStyle(.secondary)
+            }.padding(.vertical, 4)
+            
+            VStack(alignment: .leading){
+                Toggle("Natural Swipe", isOn: $naturalSwipe)
+                Text("Disable to use reversed swipe ").foregroundStyle(.secondary)
+            }.padding(.vertical, 4)
+            
+            VStack(alignment: .leading){
+                Toggle("Skip Empty Workspace", isOn: $skipEmpty)
+                Text("Enable to skip empty workspaces").foregroundStyle(.secondary)
+            }.padding(.vertical, 4)
+            
+            LaunchAtLogin.Toggle {
+                Text("Launch At Login")
             }
         }
         .padding(.horizontal, 32)
@@ -68,7 +66,8 @@ struct SettingsView: View {
 }
 
 struct SettingsView_Previews: PreviewProvider {
+    static var swipeManager = SwipeManager()
     static var previews: some View {
-        SettingsView()
+        SettingsView(swipeManager: swipeManager, socketInfo: swipeManager.socketInfo)
     }
 }

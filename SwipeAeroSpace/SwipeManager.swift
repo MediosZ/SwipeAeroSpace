@@ -2,6 +2,7 @@ import Cocoa
 import Foundation
 import SwiftUI
 import os
+import Socket
 
 enum Direction {
     case next
@@ -24,54 +25,182 @@ enum GestureState {
     case cancelled
 }
 
-func switchWorkspace(executable: String, direction: Direction, wrapWorkspace: Bool, skipEmpty: Bool) -> String {
-    let wrap = wrapWorkspace ? "--wrap-around" : ""
-    let skip_empty_command = skipEmpty ? "\(executable) list-workspaces --monitor focused --empty no |" : ""
-    let task = Process()
-    task.launchPath = "/bin/bash"
-    task.arguments = [
-        "-c",
-        "\(executable) workspace $(\(executable) list-workspaces --monitor mouse --visible) && \(skip_empty_command) \(executable) workspace \(wrap) \(direction.value)",
-    ]
-    let pipe = Pipe()
-    task.standardOutput = pipe
-    task.standardError = pipe
-    do {
-        try task.run()
-    } catch {
-        debugPrint("something went wrong, error: \(error)")
-    }
-    task.waitUntilExit()
-    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-    let output: String = String(data: data, encoding: .utf8) ?? ""
-
-    return output
+enum SwipeError: Error {
+    case SocketError
+    case CommandFail(String)
+    case Unknown(String)
 }
 
-class SwipeManager {
+
+public struct ClientRequest: Codable, Sendable {
+    public let command: String
+    public let args: [String]
+    public let stdin: String
+
+    public init(
+        args: [String],
+        stdin: String
+    ) {
+        self.command = ""
+        self.args = args
+        self.stdin = stdin
+    }
+}
+
+
+public struct ServerAnswer: Codable, Sendable {
+    public let exitCode: Int32
+    public let stdout: String
+    public let stderr: String
+    public let serverVersionAndHash: String
+
+    public init(
+        exitCode: Int32,
+        stdout: String = "",
+        stderr: String = "",
+        serverVersionAndHash: String
+    ) {
+        self.exitCode = exitCode
+        self.stdout = stdout
+        self.stderr = stderr
+        self.serverVersionAndHash = serverVersionAndHash
+    }
+}
+
+class SocketInfo: ObservableObject {
+    @Published var socketConnected: Bool = false
+}
+
+
+class SwipeManager{
     // user settings
-    @AppStorage("aerospace") private static var aerospace: String =
+    @AppStorage("aerospace") private var executable: String =
         "/opt/homebrew/bin/aerospace"
-    @AppStorage("threshold") private static var swipeThreshold: Double = 0.3
-    @AppStorage("wrap") private static var wrapWorkspace: Bool = false
-    @AppStorage("natrual") private static var naturalSwipe: Bool = true
-    @AppStorage("skip-empty") private static var skipEmpty: Bool = false
+    @AppStorage("threshold") private var swipeThreshold: Double = 0.3
+    @AppStorage("wrap") private var wrapWorkspace: Bool = false
+    @AppStorage("natrual") private var naturalSwipe: Bool = true
+    @AppStorage("skip-empty") private var skipEmpty: Bool = false
 
-    private static var eventTap: CFMachPort? = nil
+//    @Published public var socketConnected: Bool = false
+    
+    var socketInfo = SocketInfo()
+    
+    private var eventTap: CFMachPort? = nil
     // Event state.
-    private static var accDisX: Float = 0
-    private static var prevTouchPositions: [String: NSPoint] = [:]
-    private static var state: GestureState = .ended
+    private var accDisX: Float = 0
+    private var prevTouchPositions: [String: NSPoint] = [:]
+    private var state: GestureState = .ended
+    
+    private var socket: Socket? = nil
+    
+    private func runCommand(args: [String], stdin: String) -> Result<String, SwipeError> {
+        guard let socket = socket else { return .failure(.SocketError) }
+        do {
+            let request = try JSONEncoder().encode(ClientRequest(args: args, stdin: stdin))
+            try socket.write(from: request)
+            let _ = try Socket.wait(for: [socket], timeout: 0, waitForever: true)
+            var answer = Data()
+            try socket.read(into: &answer)
+            let result = try JSONDecoder().decode(ServerAnswer.self, from: answer)
+            if result.exitCode != 0 {
+                return .failure(.CommandFail(result.stderr))
+            }
 
-    public static func nextWorkspace() {
-        let _ = switchWorkspace(executable: aerospace, direction: .next, wrapWorkspace: wrapWorkspace, skipEmpty: skipEmpty)
+            return .success(result.stdout)
+            
+        }
+        catch let error {
+            return .failure(.Unknown(error.localizedDescription))
+        }
+    }
+    
+    private func getNonEmptyWorkspaces() -> String {
+        let args = [
+            "list-workspaces", "--monitor", "focused", "--empty", "no"
+        ]
+        switch runCommand(args: args, stdin: "") {
+        case .success(let ws):
+            return ws
+        case .failure(let error):
+            debugPrint("something went wrong, error: \(error)")
+            return ""
+        }
+    }
+    
+    
+    private func switchWorkspace(direction: Direction) -> String {
+        if socket != nil {
+            var args = ["workspace", direction.value]
+            if wrapWorkspace {
+                args.append("--wrap-around")
+            }
+            let stdin = skipEmpty ? getNonEmptyWorkspaces() : ""
+            
+            
+            switch runCommand(args: args, stdin: stdin) {
+            case .success(let output):
+                return output
+            case .failure(let error):
+                return error.localizedDescription
+            }
+        }
+        else {
+            let wrap = wrapWorkspace ? "--wrap-around" : ""
+            let skip_empty_command = skipEmpty ? "\(executable) list-workspaces --monitor focused --empty no |" : ""
+            let task = Process()
+            task.launchPath = "/bin/bash"
+            task.arguments = [
+                "-c",
+                "\(executable) workspace $(\(executable) list-workspaces --monitor mouse --visible) && \(skip_empty_command) \(executable) workspace \(wrap) \(direction.value)",
+            ]
+            let pipe = Pipe()
+            task.standardOutput = pipe
+            task.standardError = pipe
+            do {
+                try task.run()
+            } catch {
+                debugPrint("something went wrong, error: \(error)")
+            }
+            task.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output: String = String(data: data, encoding: .utf8) ?? ""
+
+            return output
+        }
     }
 
-    public static func prevWorkspace() {
-        let _ = switchWorkspace(executable: aerospace, direction: .prev, wrapWorkspace: wrapWorkspace, skipEmpty: skipEmpty)
+    public func nextWorkspace() {
+        let _ = switchWorkspace(direction: .next)
     }
 
-    static func start() {
+    public func prevWorkspace() {
+        let _ = switchWorkspace(direction: .prev)
+    }
+    
+    public func socketStatus() -> Bool {
+        socket != nil
+    }
+    
+    public func connectSocket(reconnect: Bool = false) {
+        if socket != nil && !reconnect{
+            debugPrint("socket is connected")
+            return
+        }
+        
+        let socket_path = "/tmp/bobko.aerospace-\(NSUserName()).sock"
+        do {
+            socket = try Socket.create(family: .unix, type: .stream, proto: .unix)
+            try socket?.connect(to: socket_path)
+//            socketConnected = true
+            socketInfo.socketConnected = true
+            debugPrint("connect to socket \(socket_path)")
+        }
+        catch let error {
+            debugPrint("Unexpected error: \(error.localizedDescription)")
+        }
+    }
+
+    func start() {
         if eventTap != nil {
             debugPrint("SwipeManager is already started")
             return
@@ -82,12 +211,12 @@ class SwipeManager {
             place: .headInsertEventTap,
             options: .defaultTap,
             eventsOfInterest: NSEvent.EventTypeMask.gesture.rawValue,
-            callback: { proxy, type, cgEvent, userInfo in
-                return SwipeManager.eventHandler(
-                    proxy: proxy, eventType: type, cgEvent: cgEvent,
-                    userInfo: userInfo)
+            callback: { proxy, type, cgEvent, me in
+                let wrapper = Unmanaged<SwipeManager>.fromOpaque(me!).takeUnretainedValue()
+                return wrapper.eventHandler(
+                    proxy: proxy, eventType: type, cgEvent: cgEvent)
             },
-            userInfo: nil
+            userInfo: Unmanaged.passUnretained(self).toOpaque()
         )
         if eventTap == nil {
             debugPrint("SwipeManager couldn't create event tap")
@@ -98,11 +227,16 @@ class SwipeManager {
         CFRunLoopAddSource(
             CFRunLoopGetCurrent(), runLoopSource, CFRunLoopMode.commonModes)
         CGEvent.tapEnable(tap: eventTap!, enable: true)
+        connectSocket()
+    }
+    
+    public func stop() {
+        debugPrint("stop the app")
+        socket?.close()
     }
 
-    private static func eventHandler(
-        proxy: CGEventTapProxy, eventType: CGEventType, cgEvent: CGEvent,
-        userInfo: UnsafeMutableRawPointer?
+    public func eventHandler(
+        proxy: CGEventTapProxy, eventType: CGEventType, cgEvent: CGEvent
     ) -> Unmanaged<CGEvent>? {
         if eventType.rawValue == NSEvent.EventType.gesture.rawValue,
             let nsEvent = NSEvent(cgEvent: cgEvent)
@@ -117,7 +251,7 @@ class SwipeManager {
         return Unmanaged.passUnretained(cgEvent)
     }
 
-    private static func touchEventHandler(_ nsEvent: NSEvent) {
+    private func touchEventHandler(_ nsEvent: NSEvent) {
         let touches = nsEvent.allTouches()
 
         // Sometimes there are empty touch events that we have to skip. There are no empty touch events if Mission Control or App Expose use 3-finger swipes though.
@@ -133,18 +267,16 @@ class SwipeManager {
         }
     }
 
-    private static func stopGesture() {
+    private func stopGesture() {
         if state == .began {
-            debugPrint("handle gesture")
             state = .ended
             handleGesture()
             clearEventState()
         }
     }
 
-    private static func processThreeFingers(touches: Set<NSTouch>, count: Int) {
+    private func processThreeFingers(touches: Set<NSTouch>, count: Int) {
         if state != .began && count == 3 {
-            debugPrint("start swipe")
             state = .began
         }
         if state == .began {
@@ -152,12 +284,12 @@ class SwipeManager {
         }
     }
 
-    private static func clearEventState() {
+    private func clearEventState() {
         accDisX = 0
         prevTouchPositions.removeAll()
     }
 
-    private static func handleGesture() {
+    private func handleGesture() {
         // filter
         if abs(accDisX) < Float(swipeThreshold) {
             return
@@ -168,11 +300,10 @@ class SwipeManager {
         else {
             accDisX < 0 ? .prev : .next
         }
-        let _ = switchWorkspace(
-            executable: aerospace, direction: direction, wrapWorkspace: wrapWorkspace, skipEmpty: skipEmpty)
+        let _ = switchWorkspace(direction: direction)
     }
 
-    private static func horizontalSwipeDistance(touches: Set<NSTouch>) -> Float
+    private func horizontalSwipeDistance(touches: Set<NSTouch>) -> Float
     {
         var allRight = true
         var allLeft = true
@@ -205,7 +336,7 @@ class SwipeManager {
         return sumDisX
     }
 
-    private static func touchDistance(_ touch: NSTouch) -> (Float, Float) {
+    private func touchDistance(_ touch: NSTouch) -> (Float, Float) {
         guard let prevPosition = prevTouchPositions["\(touch.identity)"] else {
             return (0, 0)
         }
