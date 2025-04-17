@@ -183,7 +183,7 @@ class SwipeManager {
             }()
 
         if normalizedCurrentIndex == -1 {
-            return .failure(.SocketError)
+            return .failure(.CommandFail("Workspace not found"))
         }
 
         let count = workspaceOrder.count
@@ -208,7 +208,7 @@ class SwipeManager {
             }
         }
 
-        return .failure(.SocketError)
+        return .failure(.CommandFail("Workspace not found"))
     }
 
     func nextWorkspace() {
