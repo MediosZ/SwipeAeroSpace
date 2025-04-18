@@ -5,6 +5,7 @@ struct SettingsView: View {
     @AppStorage("wrap") private var wrapWorkspace: Bool = false
     @AppStorage("natrual") private var naturalSwipe: Bool = true
     @AppStorage("skip-empty") private var skipEmpty: Bool = false
+    @AppStorage("qwerty-swipe") private var qwertySwipe: Bool = false
     
     @State private var numberFormatter: NumberFormatter = {
         var nf = NumberFormatter()
@@ -44,6 +45,11 @@ struct SettingsView: View {
             VStack(alignment: .leading){
                 Toggle("Natural Swipe", isOn: $naturalSwipe)
                 Text("Disable to use reversed swipe ").foregroundStyle(.secondary)
+            }.padding(.vertical, 4)
+            
+            VStack(alignment: .leading){
+                Toggle("QWERTY Swipe", isOn: $qwertySwipe)
+                Text("Swipe direction is based on QWERTY keyboard").foregroundStyle(.secondary)
             }.padding(.vertical, 4)
             
             VStack(alignment: .leading){
