@@ -123,88 +123,70 @@ class SwipeManager {
 
     @discardableResult
     private func switchWorkspace(direction: Direction) -> Result<String, SwipeError> {
-        var workspaceOrder: [String] = [
+        let defaultOrder = [
             "1", "2", "3", "4", "5", "6", "7", "8", "9",
             "A", "B", "C", "D", "E", "F", "G", "H", "I",
             "J", "K", "L", "M", "N", "O", "P", "Q", "R",
-            "S", "T", "U", "V", "W", "X", "Y", "Z",
+            "S", "T", "U", "V", "W", "X", "Y", "Z"
         ]
-        if qwertySwipe {
-            workspaceOrder = [
-                "1", "2", "3", "4", "5", "6", "7", "8", "9",
-                "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P",
-                "A", "S", "D", "F", "G", "H", "J", "K", "L",
-                "Z", "X", "C", "V", "B", "N", "M",
-            ]
+        let qwertyOrder = [
+            "1", "2", "3", "4", "5", "6", "7", "8", "9",
+            "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P",
+            "A", "S", "D", "F", "G", "H", "J", "K", "L",
+            "Z", "X", "C", "V", "B", "N", "M"
+        ]
+
+        let workspaceOrder = qwertySwipe ? qwertyOrder : defaultOrder
+
+        guard let mouseOn = try? runCommand(args: ["list-workspaces", "--monitor", "mouse", "--visible"], stdin: "").get().trimmingCharacters(in: .whitespacesAndNewlines).uppercased() else {
+            return .failure(.CommandFail("Cannot get current workspace"))
         }
 
-        var res = runCommand(
-            args: ["list-workspaces", "--monitor", "mouse", "--visible"], stdin: "")
-        guard let mouse_on_raw = try? res.get() else {
-            return res
-        }
-        let mouse_on = mouse_on_raw.uppercased()
-
-        res = runCommand(args: ["list-workspaces", "--all"], stdin: "")
-        guard let wsListRaw = try? res.get() else {
-            return res
+        guard let allWorkspacesRaw = try? runCommand(args: ["list-workspaces", "--all"], stdin: "").get() else {
+            return .failure(.CommandFail("Cannot list all workspaces"))
         }
 
-        let allWorkspaces =
-            wsListRaw
-            .components(separatedBy: "\n")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() }
-            .filter { !$0.isEmpty }
-
-        let filteredWorkspaces: [String]
-        if skipEmpty {
-            res = getNonEmptyWorkspaces()
-            guard let nonEmptyRaw = try? res.get() else {
-                return res
-            }
-            filteredWorkspaces =
-                nonEmptyRaw
-                .components(separatedBy: "\n")
+        let allWorkspaces = Set(
+            allWorkspacesRaw
+                .components(separatedBy: .newlines)
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() }
                 .filter { !$0.isEmpty }
+        )
+
+        let filteredWorkspaces: Set<String>
+        if skipEmpty {
+            guard let nonEmptyRaw = try? getNonEmptyWorkspaces().get() else {
+                return .failure(.CommandFail("Cannot get non-empty workspaces"))
+            }
+
+            filteredWorkspaces = Set(
+                nonEmptyRaw
+                    .components(separatedBy: .newlines)
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() }
+                    .filter { !$0.isEmpty }
+            )
         } else {
             filteredWorkspaces = allWorkspaces
         }
 
-        let normalizedCurrentIndex =
-            workspaceOrder.firstIndex(of: mouse_on)
-            ?? {
-                for (i, name) in workspaceOrder.enumerated() {
-                    if filteredWorkspaces.contains(name) {
-                        return i
-                    }
-                }
-                return -1
-            }()
+        let currentIndex = workspaceOrder.firstIndex(of: mouseOn)
+            ?? workspaceOrder.firstIndex(where: { filteredWorkspaces.contains($0) })
 
-        if normalizedCurrentIndex == -1 {
+        guard let fromIndex = currentIndex else {
             return .failure(.CommandFail("Workspace not found"))
         }
 
-        let count = workspaceOrder.count
         let offset = direction == .next ? 1 : -1
+        let count = workspaceOrder.count
 
-        if wrapWorkspace {
-            for i in 1..<count {
-                let index = (normalizedCurrentIndex + i * offset + count) % count
-                let candidate = workspaceOrder[index]
-                if filteredWorkspaces.contains(candidate) {
-                    return runCommand(args: ["workspace", candidate], stdin: "")
-                }
-            }
-        } else {
-            var index = normalizedCurrentIndex + offset
-            while index >= 0 && index < count {
-                let candidate = workspaceOrder[index]
-                if filteredWorkspaces.contains(candidate) {
-                    return runCommand(args: ["workspace", candidate], stdin: "")
-                }
-                index += offset
+        let range: [Int] = wrapWorkspace
+            ? (1..<count).map { (fromIndex + $0 * offset + count) % count }
+            : Array(stride(from: fromIndex + offset, through: offset > 0 ? count - 1 : 0, by: offset))
+
+        for index in range {
+            let candidate = workspaceOrder[index]
+            if filteredWorkspaces.contains(candidate) {
+                return runCommand(args: ["workspace", candidate], stdin: "")
             }
         }
 
