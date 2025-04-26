@@ -96,6 +96,8 @@ class SwipeManager{
     private var state: GestureState = .ended
     private var socket: Socket? = nil
     
+    private var logger: Logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "Info")
+    
     private func runCommand(args: [String], stdin: String, retry: Bool = false) -> Result<String, SwipeError> {
         guard let socket = socket else { return .failure(.SocketError("No socket created")) }
         do {
@@ -118,7 +120,7 @@ class SwipeManager{
             if retry {
                 return .failure(.SocketError(socketError.localizedDescription))
             }
-            debugPrint("Trying reconnect socket...")
+            logger.info("Trying reconnect socket...")
             connectSocket(reconnect: true)
             return runCommand(args: args, stdin: stdin, retry: true)
         }
@@ -161,21 +163,21 @@ class SwipeManager{
     func nextWorkspace() {
         switch switchWorkspace(direction: .next) {
         case .success: return
-        case .failure(let err): debugPrint(err.localizedDescription)
+        case .failure(let err): logger.error("\(err.localizedDescription)")
         }
     }
     
     func prevWorkspace() {
         switch switchWorkspace(direction: .prev) {
         case .success: return
-        case .failure(let err): debugPrint(err.localizedDescription)
+        case .failure(let err): logger.error("\(err.localizedDescription)")
         }
         
     }
     
     func connectSocket(reconnect: Bool = false) {
         if socket != nil && !reconnect{
-            debugPrint("socket is connected")
+            logger.warning("socket is connected")
             return
         }
         
@@ -184,19 +186,19 @@ class SwipeManager{
             socket = try Socket.create(family: .unix, type: .stream, proto: .unix)
             try socket?.connect(to: socket_path)
             socketInfo.socketConnected = true
-            debugPrint("connect to socket \(socket_path)")
+            logger.info("connect to socket \(socket_path)")
         }
         catch let error {
-            debugPrint("Unexpected error: \(error.localizedDescription)")
+            logger.error("Unexpected error: \(error.localizedDescription)")
         }
     }
     
     func start() {
         if eventTap != nil {
-            debugPrint("SwipeManager is already started")
+            logger.warning("SwipeManager is already started")
             return
         }
-        debugPrint("SwipeManager start")
+        logger.info("SwipeManager start")
         eventTap = CGEvent.tapCreate(
             tap: .cghidEventTap,
             place: .headInsertEventTap,
@@ -210,7 +212,7 @@ class SwipeManager{
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         )
         if eventTap == nil {
-            debugPrint("SwipeManager couldn't create event tap")
+            logger.error("SwipeManager couldn't create event tap")
             return
         }
         
@@ -223,7 +225,7 @@ class SwipeManager{
     }
     
     func stop() {
-        debugPrint("stop the app")
+        logger.info("stop the app")
         socket?.close()
     }
     
@@ -237,7 +239,7 @@ class SwipeManager{
         } else if eventType == .tapDisabledByUserInput
                     || eventType == .tapDisabledByTimeout
         {
-            debugPrint("SwipeManager tap disabled", eventType.rawValue)
+            logger.info("SwipeManager tap disabled \(eventType.rawValue)" )
             CGEvent.tapEnable(tap: eventTap!, enable: true)
         }
         return Unmanaged.passUnretained(cgEvent)
@@ -294,7 +296,7 @@ class SwipeManager{
         }
         switch switchWorkspace(direction: direction) {
         case .success: return
-        case .failure(let err): debugPrint(err.localizedDescription)
+        case .failure(let err): logger.error("\(err.localizedDescription)")
         }
     }
     
