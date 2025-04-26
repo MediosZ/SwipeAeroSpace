@@ -26,7 +26,7 @@ enum GestureState {
 }
 
 enum SwipeError: Error {
-    case SocketError
+    case SocketError(String)
     case CommandFail(String)
     case Unknown(String)
 }
@@ -96,8 +96,8 @@ class SwipeManager{
     private var state: GestureState = .ended
     private var socket: Socket? = nil
     
-    private func runCommand(args: [String], stdin: String) -> Result<String, SwipeError> {
-        guard let socket = socket else { return .failure(.SocketError) }
+    private func runCommand(args: [String], stdin: String, retry: Bool = false) -> Result<String, SwipeError> {
+        guard let socket = socket else { return .failure(.SocketError("No socket created")) }
         do {
             let request = try JSONEncoder().encode(ClientRequest(args: args, stdin: stdin))
             try socket.write(from: request)
@@ -108,12 +108,19 @@ class SwipeManager{
             if result.exitCode != 0 {
                 return .failure(.CommandFail(result.stderr))
             }
-            
             return .success(result.stdout)
             
         }
         catch let error {
-            return .failure(.Unknown(error.localizedDescription))
+            guard let socketError = error as? Socket.Error else { return .failure(.Unknown(error.localizedDescription)) }
+            // if we encouter the socket error
+            // try reconnect the socket and rerun the command only once.
+            if retry {
+                return .failure(.SocketError(socketError.localizedDescription))
+            }
+            debugPrint("Trying reconnect socket...")
+            connectSocket(reconnect: true)
+            return runCommand(args: args, stdin: stdin, retry: true)
         }
     }
     
@@ -152,11 +159,18 @@ class SwipeManager{
     }
     
     func nextWorkspace() {
-        switchWorkspace(direction: .next)
+        switch switchWorkspace(direction: .next) {
+        case .success: return
+        case .failure(let err): debugPrint(err.localizedDescription)
+        }
     }
     
     func prevWorkspace() {
-        switchWorkspace(direction: .prev)
+        switch switchWorkspace(direction: .prev) {
+        case .success: return
+        case .failure(let err): debugPrint(err.localizedDescription)
+        }
+        
     }
     
     func connectSocket(reconnect: Bool = false) {
@@ -278,7 +292,10 @@ class SwipeManager{
         else {
             accDisX < 0 ? .prev : .next
         }
-        switchWorkspace(direction: direction)
+        switch switchWorkspace(direction: direction) {
+        case .success: return
+        case .failure(let err): debugPrint(err.localizedDescription)
+        }
     }
     
     private func horizontalSwipeDistance(touches: Set<NSTouch>) -> Float
