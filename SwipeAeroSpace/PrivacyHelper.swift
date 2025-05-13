@@ -5,7 +5,8 @@ class PrivacyHelper {
         //TODO: Investigation required. Calling AXIsProcessTrustedWithOptions in sandboxed app doesn't prompt user (at least in Ventura 13.4.1) but creating CGEventTap does it.
         let isAccessibilityPermissionGranted = AXIsProcessTrustedWithOptions(
             [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
-                as CFDictionary)
+                as CFDictionary
+        )
         if isAccessibilityPermissionGranted {
             return true
         } else {
@@ -27,7 +28,9 @@ class PrivacyHelper {
 }
 
 private func dummyEventHandler(
-    proxy: CGEventTapProxy, eventType: CGEventType, cgEvent: CGEvent,
+    proxy: CGEventTapProxy,
+    eventType: CGEventType,
+    cgEvent: CGEvent,
     userInfo: UnsafeMutableRawPointer?
 ) -> Unmanaged<CGEvent>? {
     debugPrint("Should never happen!")

@@ -11,7 +11,9 @@ import os.log
 
 public enum LaunchAtLogin {
     private static let logger = Logger(
-        subsystem: "com.sindresorhus.LaunchAtLogin", category: "main")
+        subsystem: "com.sindresorhus.LaunchAtLogin",
+        category: "main"
+    )
     fileprivate static let observable = Observable()
 
     /**
@@ -42,7 +44,7 @@ public enum LaunchAtLogin {
 
     /**
     Whether the app was launched at login.
-
+    
     - Important: This property must only be checked in `NSApplicationDelegate#applicationDidFinishLaunching`.
     */
     public static var wasLaunchedAtLogin: Bool {
@@ -67,7 +69,7 @@ extension LaunchAtLogin {
 extension LaunchAtLogin {
     /**
     This package comes with a `LaunchAtLogin.Toggle` view which is like the built-in `Toggle` but with a predefined binding and label. Clicking the view toggles “launch at login” for your app.
-
+    
     ```
     struct ContentView: View {
         var body: some View {
@@ -75,9 +77,9 @@ extension LaunchAtLogin {
         }
     }
     ```
-
+    
     The default label is `"Launch at login"`, but it can be overridden for localization and other needs:
-
+    
     ```
     struct ContentView: View {
         var body: some View {
@@ -94,7 +96,7 @@ extension LaunchAtLogin {
 
         /**
         Creates a toggle that displays a custom label.
-
+        
         - Parameters:
             - label: A view that describes the purpose of the toggle.
         */
@@ -111,9 +113,9 @@ extension LaunchAtLogin {
 extension LaunchAtLogin.Toggle<Text> {
     /**
     Creates a toggle that generates its label from a localized string key.
-
+    
     This initializer creates a ``Text`` view on your behalf with the provided `titleKey`.
-
+    
     - Parameters:
         - titleKey: The key for the toggle's localized title, that describes the purpose of the toggle.
     */
@@ -123,9 +125,9 @@ extension LaunchAtLogin.Toggle<Text> {
 
     /**
     Creates a toggle that generates its label from a string.
-
+    
     This initializer creates a `Text` view on your behalf with the provided `title`.
-
+    
     - Parameters:
         - title: A string that describes the purpose of the toggle.
     */
