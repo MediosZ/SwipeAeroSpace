@@ -1,5 +1,5 @@
 #!/bin/bash
-cd "$(dirname "$0")/.."
+# cd "$(dirname "$0")/.."
 
 zip_uri='' # mandatory
 cask_name='swipeaerospace'
