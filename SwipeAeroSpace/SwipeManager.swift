@@ -165,7 +165,7 @@ class SwipeManager {
             return res
         }
 
-        var args = ["workspace", direction.value]
+        var args = ["workspace", "--stdin", direction.value]
         if wrapWorkspace {
             args.append("--wrap-around")
         }
