@@ -35,14 +35,20 @@ public struct ClientRequest: Codable, Sendable {
     public let command: String
     public let args: [String]
     public let stdin: String
+    public let windowId: UInt32?
+    public let workspace: String?
 
     public init(
         args: [String],
-        stdin: String
+        stdin: String,
+        windowId: UInt32?,
+        workspace: String?
     ) {
         self.command = ""
         self.args = args
         self.stdin = stdin
+        self.windowId = windowId
+        self.workspace = workspace
     }
 }
 
@@ -107,7 +113,7 @@ class SwipeManager {
         }
         do {
             let request = try JSONEncoder().encode(
-                ClientRequest(args: args, stdin: stdin)
+                ClientRequest(args: args, stdin: stdin, windowId: nil, workspace: nil)
             )
             try socket.write(from: request)
             let _ = try Socket.wait(
@@ -165,7 +171,7 @@ class SwipeManager {
             return res
         }
 
-        var args = ["workspace", "--stdin", direction.value]
+        var args = ["workspace", direction.value]
         if wrapWorkspace {
             args.append("--wrap-around")
         }
@@ -176,6 +182,10 @@ class SwipeManager {
                 return res
             }
             stdin = ws
+            if stdin != "" {
+                // explicitly insert '--stdin'
+                args.append("--stdin")
+            }
         }
         return runCommand(args: args, stdin: stdin)
     }
