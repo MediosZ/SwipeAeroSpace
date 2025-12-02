@@ -18,7 +18,7 @@ jobs:
 
       - name: Build and export app
         run: |
-          xcodebuild -scheme SwipeAeroSpace -configuration Release -derivedDataPath build
+          xcodebuild -scheme SwipeAeroSpace -configuration Release -derivedDataPath build -destination "generic/platform=macOS"
 
       - name: Make Release Dmg
         run: |
