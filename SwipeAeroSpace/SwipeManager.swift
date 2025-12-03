@@ -1,216 +1,388 @@
 import Cocoa
 import Foundation
+import Socket
 import SwiftUI
+import os
 
 enum Direction {
     case next
     case prev
-    
+
     var value: String {
         switch self {
-            case .next:
-                "next"
-            case .prev:
-                "prev"
+        case .next:
+            "next"
+        case .prev:
+            "prev"
         }
     }
 }
 
-func switchWorkspace(executable: String, direction: Direction ) -> String {
+enum GestureState {
+    case began
+    case changed
+    case ended
+    case cancelled
+}
 
-    let task = Process()
-    task.launchPath = "/bin/bash"
-    task.arguments = ["-c", "\(executable) workspace $(\(executable) list-workspaces --monitor mouse --visible) && \(executable) workspace \(direction.value)"]
-    let pipe = Pipe()
-    task.standardOutput = pipe
-    do {
-        try task.run()
-    } catch {
-        print("something went wrong, error: \(error)")
+enum SwipeError: Error {
+    case SocketError(String)
+    case CommandFail(String)
+    case Unknown(String)
+}
+
+public struct ClientRequest: Codable, Sendable {
+    public let command: String
+    public let args: [String]
+    public let stdin: String
+    public let windowId: UInt32?
+    public let workspace: String?
+
+    public init(
+        args: [String],
+        stdin: String,
+        windowId: UInt32?,
+        workspace: String?
+    ) {
+        self.command = ""
+        self.args = args
+        self.stdin = stdin
+        self.windowId = windowId
+        self.workspace = workspace
     }
-    task.waitUntilExit()
-    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-    let output: String = String(data: data, encoding: .utf8)!
+}
 
-    return output
+public struct ServerAnswer: Codable, Sendable {
+    public let exitCode: Int32
+    public let stdout: String
+    public let stderr: String
+    public let serverVersionAndHash: String
+
+    public init(
+        exitCode: Int32,
+        stdout: String = "",
+        stderr: String = "",
+        serverVersionAndHash: String
+    ) {
+        self.exitCode = exitCode
+        self.stdout = stdout
+        self.stderr = stderr
+        self.serverVersionAndHash = serverVersionAndHash
+    }
+}
+
+class SocketInfo: ObservableObject {
+    @Published var socketConnected: Bool = false
+}
+
+extension Result {
+    public var isSuccess: Bool {
+        switch self {
+        case .success: true
+        case .failure: false
+        }
+    }
 }
 
 class SwipeManager {
-    private static let accVelXThreshold: Float = 0.07
-    private static var eventTap: CFMachPort? = nil
-    // Event state.
-    private static var accVelX: Float = 0
-    private static var prevTouchPositions: [String: NSPoint] = [:]
-    // Gesture state. Gesture may consists of multiple events.
-    private static var startTime: Date? = nil
-    @AppStorage("aerospace") private static var aerospace: String!
-    @AppStorage("threshold") private static var swipeThreshold: Double!
+    // user settings
+    @AppStorage("threshold") private var swipeThreshold: Double = 0.3
+    @AppStorage("wrap") private var wrapWorkspace: Bool = false
+    @AppStorage("natrual") private var naturalSwipe: Bool = true
+    @AppStorage("skip-empty") private var skipEmpty: Bool = false
+    @AppStorage("fingers") private var fingers: String = "Three"
 
-    private static func listener(_ eventType: EventType) {
-        switch eventType {
-        case .startOrContinue(.left):
-            let _ = switchWorkspace(executable: aerospace, direction: .next)
-        case .startOrContinue(.right):
-            let _ = switchWorkspace(executable: aerospace, direction: .prev)
-        case .end: break
+    var socketInfo = SocketInfo()
+
+    private var eventTap: CFMachPort? = nil
+    private var accDisX: Float = 0
+    private var prevTouchPositions: [String: NSPoint] = [:]
+    private var state: GestureState = .ended
+    private var socket: Socket? = nil
+
+    private var logger: Logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier!,
+        category: "Info"
+    )
+
+    private func runCommand(args: [String], stdin: String, retry: Bool = false)
+        -> Result<String, SwipeError>
+    {
+        guard let socket = socket else {
+            return .failure(.SocketError("No socket created"))
+        }
+        do {
+            let request = try JSONEncoder().encode(
+                ClientRequest(args: args, stdin: stdin, windowId: nil, workspace: nil)
+            )
+            try socket.write(from: request)
+            let _ = try Socket.wait(
+                for: [socket],
+                timeout: 0,
+                waitForever: true
+            )
+            var answer = Data()
+            try socket.read(into: &answer)
+            let result = try JSONDecoder().decode(
+                ServerAnswer.self,
+                from: answer
+            )
+            if result.exitCode != 0 {
+                return .failure(.CommandFail(result.stderr))
+            }
+            return .success(result.stdout)
+
+        } catch let error {
+            guard let socketError = error as? Socket.Error else {
+                return .failure(.Unknown(error.localizedDescription))
+            }
+            // if we encouter the socket error
+            // try reconnect the socket and rerun the command only once.
+            if retry {
+                return .failure(.SocketError(socketError.localizedDescription))
+            }
+            logger.info("Trying reconnect socket...")
+            connectSocket(reconnect: true)
+            return runCommand(args: args, stdin: stdin, retry: true)
         }
     }
 
-    static func start() {
-        if eventTap != nil {
-            debugPrint("SwipeManager is already started")
+    private func getNonEmptyWorkspaces() -> Result<String, SwipeError> {
+        let args = [
+            "list-workspaces", "--monitor", "focused", "--empty", "no",
+        ]
+        return runCommand(args: args, stdin: "")
+    }
+
+    @discardableResult
+    private func switchWorkspace(direction: Direction) -> Result<
+        String, SwipeError
+    > {
+
+        var res = runCommand(
+            args: ["list-workspaces", "--monitor", "mouse", "--visible"],
+            stdin: ""
+        )
+        guard let mouse_on = try? res.get() else {
+            return res
+        }
+        res = runCommand(args: ["workspace", mouse_on], stdin: "")
+        guard (try? res.get()) != nil else {
+            return res
+        }
+
+        var args = ["workspace", direction.value]
+        if wrapWorkspace {
+            args.append("--wrap-around")
+        }
+        var stdin = ""
+        if skipEmpty {
+            res = getNonEmptyWorkspaces()
+            guard let ws = try? res.get() else {
+                return res
+            }
+            stdin = ws
+            if stdin != "" {
+                // explicitly insert '--stdin'
+                args.append("--stdin")
+            }
+        }
+        return runCommand(args: args, stdin: stdin)
+    }
+
+    func nextWorkspace() {
+        switch switchWorkspace(direction: .next) {
+        case .success: return
+        case .failure(let err): logger.error("\(err.localizedDescription)")
+        }
+    }
+
+    func prevWorkspace() {
+        switch switchWorkspace(direction: .prev) {
+        case .success: return
+        case .failure(let err): logger.error("\(err.localizedDescription)")
+        }
+
+    }
+
+    func connectSocket(reconnect: Bool = false) {
+        if socket != nil && !reconnect {
+            logger.warning("socket is connected")
             return
         }
-        debugPrint("SwipeManager start")
+
+        let socket_path = "/tmp/bobko.aerospace-\(NSUserName()).sock"
+        do {
+            socket = try Socket.create(
+                family: .unix,
+                type: .stream,
+                proto: .unix
+            )
+            try socket?.connect(to: socket_path)
+            socketInfo.socketConnected = true
+            logger.info("connect to socket \(socket_path)")
+        } catch let error {
+            logger.error("Unexpected error: \(error.localizedDescription)")
+        }
+    }
+
+    func start() {
+        if eventTap != nil {
+            logger.warning("SwipeManager is already started")
+            return
+        }
+        logger.info("SwipeManager start")
         eventTap = CGEvent.tapCreate(
             tap: .cghidEventTap,
             place: .headInsertEventTap,
             options: .defaultTap,
             eventsOfInterest: NSEvent.EventTypeMask.gesture.rawValue,
-            callback: { proxy, type, cgEvent, userInfo in
-                return SwipeManager.eventHandler(proxy: proxy, eventType: type, cgEvent: cgEvent, userInfo: userInfo)
+            callback: { proxy, type, cgEvent, me in
+                let wrapper = Unmanaged<SwipeManager>.fromOpaque(me!)
+                    .takeUnretainedValue()
+                return wrapper.eventHandler(
+                    proxy: proxy,
+                    eventType: type,
+                    cgEvent: cgEvent
+                )
             },
-            userInfo: nil
+            userInfo: Unmanaged.passUnretained(self).toOpaque()
         )
         if eventTap == nil {
-            debugPrint("SwipeManager couldn't create event tap")
+            logger.error("SwipeManager couldn't create event tap")
             return
         }
-        
+
         let runLoopSource = CFMachPortCreateRunLoopSource(nil, eventTap, 0)
-        CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, CFRunLoopMode.commonModes)
+        CFRunLoopAddSource(
+            CFRunLoopGetCurrent(),
+            runLoopSource,
+            CFRunLoopMode.commonModes
+        )
         CGEvent.tapEnable(tap: eventTap!, enable: true)
+
+        connectSocket()
     }
-    
-    private static func eventHandler(proxy: CGEventTapProxy, eventType: CGEventType, cgEvent: CGEvent, userInfo: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
-        if eventType.rawValue == NSEvent.EventType.gesture.rawValue, let nsEvent = NSEvent(cgEvent: cgEvent) {
+
+    func stop() {
+        logger.info("stop the app")
+        socket?.close()
+    }
+
+    private func eventHandler(
+        proxy: CGEventTapProxy,
+        eventType: CGEventType,
+        cgEvent: CGEvent
+    ) -> Unmanaged<CGEvent>? {
+        if eventType.rawValue == NSEvent.EventType.gesture.rawValue,
+            let nsEvent = NSEvent(cgEvent: cgEvent)
+        {
             touchEventHandler(nsEvent)
-        } else if (eventType == .tapDisabledByUserInput || eventType == .tapDisabledByTimeout) {
-            debugPrint("SwipeManager tap disabled", eventType.rawValue)
+        } else if eventType == .tapDisabledByUserInput
+            || eventType == .tapDisabledByTimeout
+        {
+            logger.info("SwipeManager tap disabled \(eventType.rawValue)")
             CGEvent.tapEnable(tap: eventTap!, enable: true)
         }
         return Unmanaged.passUnretained(cgEvent)
     }
-    
-    private static func touchEventHandler(_ nsEvent: NSEvent) {
+
+    private func touchEventHandler(_ nsEvent: NSEvent) {
         let touches = nsEvent.allTouches()
 
         // Sometimes there are empty touch events that we have to skip. There are no empty touch events if Mission Control or App Expose use 3-finger swipes though.
         if touches.isEmpty {
             return
         }
-        let touchesCount = touches.allSatisfy({ $0.phase == .ended }) ? 0 : touches.count
-
-        switch touchesCount {
-        case 2: processTwoFingers()
-        case 3: processThreeFingers(touches: touches)
-        default: processOtherFingers()
-        }
-    }
-
-    private static func processTwoFingers() {
-        // Two fingers scrolling in App Switcher is OK but we shouldn't accumulate gesture velocity here.
-        clearEventState()
-    }
-
-    private static func processThreeFingers(touches: Set<NSTouch>) {
-        let velX = SwipeManager.horizontalSwipeVelocity(touches: touches)
-        // We don't care about non-horizontal swipes.
-        if velX == nil {
-            return
-        }
-
-        accVelX += velX!
-        // Not enough swiping.
-        if abs(accVelX) < accVelXThreshold {
-            return
-        }
-
-        if startTime == nil {
-            startTime = Date()
+        let touchesCount =
+            touches.allSatisfy({ $0.phase == .ended }) ? 0 : touches.count
+        if touchesCount == 0 {
+            stopGesture()
         } else {
-            let interval = startTime!.timeIntervalSinceNow
-            if -interval < swipeThreshold {
-                // filter frequent events
-                clearEventState()
-                return
-            }
+            processTouches(touches: touches, count: touchesCount)
         }
-
-        startOrContinueGesture()
-        clearEventState()
     }
 
-    private static func processOtherFingers() {
-        if startTime != nil {
-            endGesture()
+    private func stopGesture() {
+        if state == .began {
+            state = .ended
+            handleGesture()
             clearEventState()
-            startTime = nil
         }
     }
 
-    private static func clearEventState() {
-        accVelX = 0
+    private func processTouches(touches: Set<NSTouch>, count: Int) {
+        let finger_count = fingers == "Three" ? 3 : 4
+        if state != .began && count == finger_count {
+            state = .began
+        }
+        if state == .began {
+            accDisX += horizontalSwipeDistance(touches: touches)
+        }
+    }
+
+    private func clearEventState() {
+        accDisX = 0
         prevTouchPositions.removeAll()
     }
 
-    private static func startOrContinueGesture() {
-        let direction: EventType.Direction = accVelX < 0 ? .left : .right
-        listener(.startOrContinue(direction: direction))
+    private func handleGesture() {
+        // filter
+        if abs(accDisX) < Float(swipeThreshold) {
+            return
+        }
+        let direction: Direction =
+            if naturalSwipe {
+                accDisX < 0 ? .next : .prev
+            } else {
+                accDisX < 0 ? .prev : .next
+            }
+        switch switchWorkspace(direction: direction) {
+        case .success: return
+        case .failure(let err): logger.error("\(err.localizedDescription)")
+        }
     }
 
-    private static func endGesture() {
-        listener(.end)
-    }
-
-    private static func horizontalSwipeVelocity(touches: Set<NSTouch>) -> Float? {
+    private func horizontalSwipeDistance(touches: Set<NSTouch>) -> Float {
         var allRight = true
         var allLeft = true
-        var sumVelX = Float(0)
-        var sumVelY = Float(0)
+        var sumDisX = Float(0)
+        var sumDisY = Float(0)
         for touch in touches {
-            let (velX, velY) = touchVelocity(touch)
-            allRight = allRight && velX >= 0
-            allLeft = allLeft && velX <= 0
-            sumVelX += velX
-            sumVelY += velY
+            let (disX, disY) = touchDistance(touch)
+            allRight = allRight && disX >= 0
+            allLeft = allLeft && disX <= 0
+            sumDisX += disX
+            sumDisY += disY
 
             if touch.phase == .ended {
                 prevTouchPositions.removeValue(forKey: "\(touch.identity)")
             } else {
-                prevTouchPositions["\(touch.identity)"] = touch.normalizedPosition
+                prevTouchPositions["\(touch.identity)"] =
+                    touch.normalizedPosition
             }
         }
         // All fingers should move in the same direction.
         if !allRight && !allLeft {
-            return nil
+            return 0
         }
 
-        let velX = sumVelX / Float(touches.count)
-        let velY = sumVelY / Float(touches.count)
         // Only horizontal swipes are interesting.
-        if abs(velX) <= abs(velY) {
-            return nil
+        if abs(sumDisX) <= abs(sumDisY) {
+            return 0
         }
 
-        return velX
+        return sumDisX
     }
-    
-    private static func touchVelocity(_ touch: NSTouch) -> (Float, Float) {
+
+    private func touchDistance(_ touch: NSTouch) -> (Float, Float) {
         guard let prevPosition = prevTouchPositions["\(touch.identity)"] else {
             return (0, 0)
         }
         let position = touch.normalizedPosition
-        return (Float(position.x - prevPosition.x), Float(position.y - prevPosition.y))
-    }
-
-    enum EventType {
-        case startOrContinue(direction: Direction)
-        case end
-
-        enum Direction {
-            case left
-            case right
-        }
+        return (
+            Float(position.x - prevPosition.x),
+            Float(position.y - prevPosition.y)
+        )
     }
 }

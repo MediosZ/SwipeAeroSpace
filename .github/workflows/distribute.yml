@@ -18,12 +18,17 @@ jobs:
 
       - name: Build and export app
         run: |
-          xcodebuild
+          xcodebuild -scheme SwipeAeroSpace -configuration Release -derivedDataPath build -destination "generic/platform=macOS"
 
       - name: Make Release Dmg
         run: |
-          hdiutil create temp.dmg -ov -volname "SwipeAeroSpace" -fs HFS+ -srcfolder "build/Release/SwipeAeroSpace.app"
+          hdiutil create temp.dmg -ov -volname "SwipeAeroSpace" -fs HFS+ -srcfolder "build/Build/Products/Release/SwipeAeroSpace.app"
           hdiutil convert temp.dmg -format UDZO -o "SwipeAeroSpace.dmg"
+
+      - name: Make Release Zip
+        run: |
+          cp -r "build/Build/Products/Release/SwipeAeroSpace.app" "SwipeAeroSpace.app"
+          zip -r "SwipeAeroSpace.zip" "SwipeAeroSpace.app"
 
       - name: Upload a Build Artifact
         id: upload_artifact
@@ -38,3 +43,4 @@ jobs:
           token: ${{ secrets.CUSTOM_GITHUB_TOKEN }}
           files: |
             SwipeAeroSpace.dmg
+            SwipeAeroSpace.zip
