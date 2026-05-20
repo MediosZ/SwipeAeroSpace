@@ -102,6 +102,7 @@ class SwipeManager {
     @AppStorage("maxSteps") private var maxSteps: Int = 5
     @AppStorage("swipeUpOverview") private var swipeUpOverviewEnabled: Bool = true
     @AppStorage("swipeUpFingers") private var swipeUpFingers: String = "Three"
+    @AppStorage("show-empty-workspaces") private var showEmptyWorkspaces: Bool = false
 
     var socketInfo = SocketInfo()
 
@@ -261,11 +262,15 @@ class SwipeManager {
             }
         }
 
+        var args = [
+            "list-workspaces", "--monitor", "all",
+            "--format", "%{workspace}|%{monitor-id}",
+        ]
+        if !showEmptyWorkspaces {
+            args.append(contentsOf: ["--empty", "no"])
+        }
         let allResult = runCommand(
-            args: [
-                "list-workspaces", "--monitor", "all", "--empty", "no",
-                "--format", "%{workspace}|%{monitor-id}",
-            ],
+            args: args,
             stdin: ""
         )
         guard let allOutput = try? allResult.get() else { return ([], focusedWs, focusedMonitorId) }

@@ -10,6 +10,7 @@ struct SettingsView: View {
     @AppStorage("maxSteps") private var maxSteps: Int = 5
     @AppStorage("swipeUpOverview") private var swipeUpOverviewEnabled: Bool = true
     @AppStorage("swipeUpFingers") private var swipeUpFingers: String = "Three"
+    @AppStorage("show-empty-workspaces") private var showEmptyWorkspaces: Bool = false
 
     @State private var numberFormatter: NumberFormatter = {
         var nf = NumberFormatter()
@@ -150,6 +151,14 @@ struct SettingsView: View {
                         }
                         .pickerStyle(.segmented)
                         .frame(maxWidth: 140)
+                    }
+
+                    settingRow(
+                        title: "Show Empty Workspaces",
+                        description: "Include empty workspaces in the workspace overview"
+                    ) {
+                        Toggle("", isOn: $showEmptyWorkspaces)
+                            .labelsHidden()
                     }
                 }
             }
