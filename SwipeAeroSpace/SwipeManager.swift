@@ -38,23 +38,18 @@ enum SwipeError: Error {
 }
 
 public struct ClientRequest: Codable, Sendable {
-    public let command: String
     public let args: [String]
     public let stdin: String
     public let windowId: UInt32?
-    public let workspace: String?
 
     public init(
         args: [String],
         stdin: String,
-        windowId: UInt32?,
-        workspace: String?
+        windowId: UInt32?
     ) {
-        self.command = ""
         self.args = args
         self.stdin = stdin
         self.windowId = windowId
-        self.workspace = workspace
     }
 }
 
@@ -106,6 +101,12 @@ class SwipeManager {
 
     var socketInfo = SocketInfo()
 
+    private static let queueKey = DispatchSpecificKey<Void>()
+
+    init() {
+        workQueue.setSpecific(key: Self.queueKey, value: ())
+    }
+
     private var eventTap: CFMachPort? = nil
     private var accDisX: Float = 0
     private var accDisY: Float = 0
@@ -118,13 +119,32 @@ class SwipeManager {
     private var gestureFocusDone: Bool = false
     private var pendingSwipeWork: DispatchWorkItem? = nil
     private var socket: Socket? = nil
+    private var readBuffer = Data()
+    private var protocolVersion: Int = 1
     private let workQueue = DispatchQueue(label: "swipe.workspace", qos: .userInteractive)
     private let overlayController = OverlayPanelController()
 
     private var logger: Logger = Logger(
-        subsystem: Bundle.main.bundleIdentifier!,
+        subsystem: Bundle.main.bundleIdentifier ?? "club.mediosz.SwipeAeroSpace",
         category: "Info"
     )
+
+    private func readExactly(count: Int) throws -> Data {
+        guard let socket = socket else {
+            throw SwipeError.SocketError("No socket created")
+        }
+        while readBuffer.count < count {
+            var temp = Data()
+            let bytesRead = try socket.read(into: &temp)
+            if bytesRead == 0 {
+                throw SwipeError.SocketError("Socket connection closed by peer")
+            }
+            readBuffer.append(temp)
+        }
+        let chunk = Data(readBuffer.prefix(count))
+        readBuffer.removeFirst(count)
+        return chunk
+    }
 
     private func runCommand(args: [String], stdin: String, retry: Bool = false)
         -> Result<String, SwipeError>
@@ -133,21 +153,63 @@ class SwipeManager {
             return .failure(.SocketError("No socket created"))
         }
         do {
-            let request = try JSONEncoder().encode(
-                ClientRequest(args: args, stdin: stdin, windowId: nil, workspace: nil)
-            )
+            let request: Data
+            if protocolVersion == 1 {
+                request = try JSONEncoder().encode(
+                    ClientRequest(args: args, stdin: stdin, windowId: nil)
+                )
+                // Send length prefix as a 4-byte unsigned integer (little-endian)
+                let requestLength = UInt32(request.count)
+                let lengthData = Data([
+                    UInt8(requestLength & 0xFF),
+                    UInt8((requestLength >> 8) & 0xFF),
+                    UInt8((requestLength >> 16) & 0xFF),
+                    UInt8((requestLength >> 24) & 0xFF)
+                ])
+                try socket.write(from: lengthData)
+            } else {
+                struct OldClientRequest: Codable {
+                    let command: String
+                    let args: [String]
+                    let stdin: String
+                    let windowId: UInt32?
+                    let workspace: String?
+                }
+                request = try JSONEncoder().encode(
+                    OldClientRequest(command: "", args: args, stdin: stdin, windowId: nil, workspace: nil)
+                )
+            }
+            // Send JSON bytes
             try socket.write(from: request)
-            let _ = try Socket.wait(
-                for: [socket],
-                timeout: 0,
-                waitForever: true
-            )
-            var answer = Data()
-            try socket.read(into: &answer)
-            let result = try JSONDecoder().decode(
-                ServerAnswer.self,
-                from: answer
-            )
+
+            let result: ServerAnswer
+            if protocolVersion == 1 {
+                // Read response length prefix (4 bytes)
+                let responseLengthData = try readExactly(count: 4)
+                let responseLength = UInt32(responseLengthData[0]) |
+                                     (UInt32(responseLengthData[1]) << 8) |
+                                     (UInt32(responseLengthData[2]) << 16) |
+                                     (UInt32(responseLengthData[3]) << 24)
+                
+                // Read response JSON bytes
+                let responseData = try readExactly(count: Int(responseLength))
+                result = try JSONDecoder().decode(
+                    ServerAnswer.self,
+                    from: responseData
+                )
+            } else {
+                let _ = try Socket.wait(
+                    for: [socket],
+                    timeout: 0,
+                    waitForever: true
+                )
+                var answer = Data()
+                try socket.read(into: &answer)
+                result = try JSONDecoder().decode(
+                    ServerAnswer.self,
+                    from: answer
+                )
+            }
             if result.exitCode != 0 {
                 return .failure(.CommandFail(result.stderr))
             }
@@ -379,13 +441,49 @@ class SwipeManager {
 
     }
 
+    private func getAeroSpaceProtocolVersion() -> Int {
+        let bundleIds = ["bobko.aerospace", "bobko.aerospace.debug"]
+        for id in bundleIds {
+            if let app = NSRunningApplication.runningApplications(withBundleIdentifier: id).first,
+               let bundleURL = app.bundleURL,
+               let bundle = Bundle(url: bundleURL),
+               let versionStr = bundle.infoDictionary?["CFBundleShortVersionString"] as? String {
+                logger.info("Found AeroSpace version: \(versionStr)")
+                let cleanVersion = versionStr.components(separatedBy: "-").first ?? ""
+                let parts = cleanVersion.components(separatedBy: ".").compactMap { Int($0) }
+                if parts.count >= 2 {
+                    let major = parts[0]
+                    let minor = parts[1]
+                    if major > 0 || minor >= 21 {
+                        return 1
+                    }
+                }
+                return 0
+            }
+        }
+        return 1
+    }
+
     func connectSocket(reconnect: Bool = false) {
+        if DispatchQueue.getSpecific(key: Self.queueKey) != nil {
+            performConnectSocket(reconnect: reconnect)
+        } else {
+            workQueue.sync {
+                self.performConnectSocket(reconnect: reconnect)
+            }
+        }
+    }
+
+    private func performConnectSocket(reconnect: Bool = false) {
         if socket != nil && !reconnect {
             logger.warning("socket is connected")
             return
         }
 
         let socket_path = "/tmp/bobko.aerospace-\(NSUserName()).sock"
+        protocolVersion = getAeroSpaceProtocolVersion()
+        logger.info("Detected AeroSpace protocol version: \(self.protocolVersion)")
+        
         do {
             socket = try Socket.create(
                 family: .unix,
@@ -393,9 +491,47 @@ class SwipeManager {
                 proto: .unix
             )
             try socket?.connect(to: socket_path)
-            socketInfo.socketConnected = true
-            logger.info("connect to socket \(socket_path)")
+            
+            readBuffer.removeAll()
+            
+            if protocolVersion == 1 {
+                // Perform handshake: write version 1
+                let version: UInt32 = 1
+                let versionData = Data([
+                    UInt8(version & 0xFF),
+                    UInt8((version >> 8) & 0xFF),
+                    UInt8((version >> 16) & 0xFF),
+                    UInt8((version >> 24) & 0xFF)
+                ])
+                try socket?.write(from: versionData)
+                
+                // Perform handshake: read version
+                let serverVersionData = try readExactly(count: 4)
+                let serverVersion = UInt32(serverVersionData[0]) |
+                                    (UInt32(serverVersionData[1]) << 8) |
+                                    (UInt32(serverVersionData[2]) << 16) |
+                                    (UInt32(serverVersionData[3]) << 24)
+                if serverVersion != 1 {
+                    logger.error("AeroSpace server protocol version is \(serverVersion), expected 1")
+                    socket?.close()
+                    socket = nil
+                    DispatchQueue.main.async {
+                        self.socketInfo.socketConnected = false
+                    }
+                    return
+                }
+            }
+
+            DispatchQueue.main.async {
+                self.socketInfo.socketConnected = true
+            }
+            logger.info("connected to socket \(socket_path) (protocol \(self.protocolVersion))")
         } catch let error {
+            socket?.close()
+            socket = nil
+            DispatchQueue.main.async {
+                self.socketInfo.socketConnected = false
+            }
             logger.error("Unexpected error: \(error.localizedDescription)")
         }
     }
@@ -440,7 +576,13 @@ class SwipeManager {
 
     func stop() {
         logger.info("stop the app")
-        socket?.close()
+        workQueue.async {
+            self.socket?.close()
+            self.socket = nil
+            DispatchQueue.main.async {
+                self.socketInfo.socketConnected = false
+            }
+        }
     }
 
     private func eventHandler(
