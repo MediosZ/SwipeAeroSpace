@@ -116,13 +116,15 @@ struct WorkspaceOverlayView: View {
                                             }
                                         } else if overlayState.hoveredWorkspace == ws.id {
                                             overlayState.hoveredWorkspace = nil
-                                            let task = DispatchWorkItem {
-                                                onDismiss()
+                                            if ws.monitorId == focusedMonitorId {
+                                                let task = DispatchWorkItem {
+                                                    onDismiss()
+                                                }
+                                                revertTask = task
+                                                DispatchQueue.main.asyncAfter(
+                                                    deadline: .now() + 0.08,
+                                                    execute: task)
                                             }
-                                            revertTask = task
-                                            DispatchQueue.main.asyncAfter(
-                                                deadline: .now() + 0.08,
-                                                execute: task)
                                         }
                                     }
                                 }
@@ -222,6 +224,7 @@ struct WorkspaceCard: View {
 
 class KeyablePanel: NSPanel {
     override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
 
     override func sendEvent(_ event: NSEvent) {
         // On mouse-down, make key first so SwiftUI receives the click immediately
@@ -244,6 +247,111 @@ class OverlayPanelController {
     private var onDismissCallback: (() -> Void)?
     private var onSelectCallback: ((String) -> Void)?
     private let overlayState = OverlayState()
+    private let maxColumns = 5
+
+    private struct Coordinate {
+        let display: Int
+        let row: Int
+        let col: Int
+    }
+
+    private func computeLayout() -> [[[WorkspaceInfo]]] {
+        var seen: [String: Int] = [:]
+        var groups: [[WorkspaceInfo]] = []
+        for ws in overlayState.workspaces {
+            if let idx = seen[ws.monitorId] {
+                groups[idx].append(ws)
+            } else {
+                seen[ws.monitorId] = groups.count
+                groups.append([ws])
+            }
+        }
+        return groups.map { groupWorkspaces in
+            stride(from: 0, to: groupWorkspaces.count, by: maxColumns).map {
+                Array(groupWorkspaces[$0..<min($0 + maxColumns, groupWorkspaces.count)])
+            }
+        }
+    }
+
+    private func findCoordinate(id: String?, in layout: [[[WorkspaceInfo]]]) -> Coordinate? {
+        guard let id = id else { return nil }
+        for (dIdx, display) in layout.enumerated() {
+            for (rIdx, row) in display.enumerated() {
+                for (cIdx, ws) in row.enumerated() {
+                    if ws.id == id {
+                        return Coordinate(display: dIdx, row: rIdx, col: cIdx)
+                    }
+                }
+            }
+        }
+        return nil
+    }
+
+    private func navigateGrid(dx: Int, dy: Int) {
+        let layout = computeLayout()
+        guard !layout.isEmpty else { return }
+
+        guard let coord = findCoordinate(id: overlayState.hoveredWorkspace, in: layout) else {
+            if let firstWs = overlayState.workspaces.first {
+                selectWorkspace(firstWs.id)
+            }
+            return
+        }
+
+        if dx != 0 {
+            // Horizontal move: wrap within the current row
+            let currentRow = layout[coord.display][coord.row]
+            let rowCount = currentRow.count
+            let newCol = (coord.col + dx + rowCount) % rowCount
+            let target = currentRow[newCol]
+            selectWorkspace(target.id)
+            return
+        }
+
+        if dy > 0 {
+            // Down: next row in current display, or first row in next display, clamp at end
+            let currentDisplay = layout[coord.display]
+            if coord.row + 1 < currentDisplay.count {
+                let nextRow = currentDisplay[coord.row + 1]
+                let newCol = min(coord.col, nextRow.count - 1)
+                selectWorkspace(nextRow[newCol].id)
+            } else if coord.display + 1 < layout.count {
+                let nextDisplayRow = layout[coord.display + 1][0]
+                let newCol = min(coord.col, nextDisplayRow.count - 1)
+                selectWorkspace(nextDisplayRow[newCol].id)
+            }
+            return
+        }
+
+        if dy < 0 {
+            // Up: prev row in current display, or last row in prev display, clamp at top
+            let currentDisplay = layout[coord.display]
+            if coord.row - 1 >= 0 {
+                let prevRow = currentDisplay[coord.row - 1]
+                let newCol = min(coord.col, prevRow.count - 1)
+                selectWorkspace(prevRow[newCol].id)
+            } else if coord.display - 1 >= 0 {
+                let prevDisplay = layout[coord.display - 1]
+                let lastRowOfPrevDisplay = prevDisplay[prevDisplay.count - 1]
+                let newCol = min(coord.col, lastRowOfPrevDisplay.count - 1)
+                selectWorkspace(lastRowOfPrevDisplay[newCol].id)
+            }
+            return
+        }
+    }
+
+    private func navigateLinear(forward: Bool) {
+        let all = overlayState.workspaces
+        guard !all.isEmpty else { return }
+        let currentIdx = all.firstIndex(where: { $0.id == overlayState.hoveredWorkspace }) ?? 0
+        let delta = forward ? 1 : -1
+        let nextIdx = (currentIdx + delta + all.count) % all.count
+        selectWorkspace(all[nextIdx].id)
+    }
+
+    private func selectWorkspace(_ id: String) {
+        overlayState.hoveredWorkspace = id
+    }
 
     func show(
         workspaces: [WorkspaceInfo],
@@ -264,6 +372,7 @@ class OverlayPanelController {
         }
         self.onSelectCallback = selectHandler
         overlayState.workspaces = workspaces
+        overlayState.hoveredWorkspace = workspaces.first(where: { $0.isFocused })?.id ?? workspaces.first?.id
 
         let view = WorkspaceOverlayView(
             onSelect: selectHandler,
@@ -323,23 +432,51 @@ class OverlayPanelController {
         panel.makeKeyAndOrderFront(nil)
         self.panel = panel
 
-        // Local monitor catches Escape and clicks when the panel is key
+        // Local monitor catches Escape, navigation keys, and clicks when the panel is key
         localMonitor = NSEvent.addLocalMonitorForEvents(
             matching: [.keyDown, .leftMouseDown, .rightMouseDown]
         ) { [weak self] event in
-            if event.type == .keyDown && event.keyCode == 53 {
-                self?.dismiss()
-                return nil
+            guard let self = self else { return event }
+
+            if event.type == .keyDown {
+                switch event.keyCode {
+                case 53: // Escape
+                    self.dismiss()
+                    return nil
+                case 123: // Left Arrow
+                    self.navigateGrid(dx: -1, dy: 0)
+                    return nil
+                case 124: // Right Arrow
+                    self.navigateGrid(dx: 1, dy: 0)
+                    return nil
+                case 125: // Down Arrow
+                    self.navigateGrid(dx: 0, dy: 1)
+                    return nil
+                case 126: // Up Arrow
+                    self.navigateGrid(dx: 0, dy: -1)
+                    return nil
+                case 48: // Tab
+                    let isShift = event.modifierFlags.contains(.shift)
+                    self.navigateLinear(forward: !isShift)
+                    return nil
+                case 36, 76, 49: // Return, Keypad Enter, Space
+                    if let ws = self.overlayState.hoveredWorkspace {
+                        self.onSelectCallback?(ws)
+                    }
+                    return nil
+                default:
+                    break
+                }
             }
             if event.type == .leftMouseDown || event.type == .rightMouseDown {
                 let screenPoint = NSEvent.mouseLocation
-                if let panel = self?.panel,
+                if let panel = self.panel,
                     !NSPointInRect(screenPoint, panel.frame)
                 {
-                    self?.dismiss()
-                } else if let ws = self?.overlayState.hoveredWorkspace {
+                    self.dismiss()
+                } else if let ws = self.overlayState.hoveredWorkspace {
                     // Select the hovered workspace on first click
-                    self?.onSelectCallback?(ws)
+                    self.onSelectCallback?(ws)
                     return nil
                 }
             }
@@ -362,6 +499,9 @@ class OverlayPanelController {
 
     func update(workspaces: [WorkspaceInfo]) {
         overlayState.workspaces = workspaces
+        if overlayState.hoveredWorkspace == nil {
+            overlayState.hoveredWorkspace = workspaces.first(where: { $0.isFocused })?.id ?? workspaces.first?.id
+        }
     }
 
     func dismiss() {

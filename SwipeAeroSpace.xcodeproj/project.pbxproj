@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		9E4137D22D97E63100634ACB /* BlueSocketTestCommonLibrary in Frameworks */ = {isa = PBXBuildFile; productRef = 9E4137D12D97E63100634ACB /* BlueSocketTestCommonLibrary */; };
 		9E4137D42D97E63100634ACB /* Socket in Frameworks */ = {isa = PBXBuildFile; productRef = 9E4137D32D97E63100634ACB /* Socket */; };
+		9E4137D52D97E63100634ACB /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = 9E4137D72D97E63100634ACB /* KeyboardShortcuts */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,6 +31,7 @@
 			files = (
 				9E4137D22D97E63100634ACB /* BlueSocketTestCommonLibrary in Frameworks */,
 				9E4137D42D97E63100634ACB /* Socket in Frameworks */,
+				9E4137D52D97E63100634ACB /* KeyboardShortcuts in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -74,6 +76,7 @@
 			packageProductDependencies = (
 				9E4137D12D97E63100634ACB /* BlueSocketTestCommonLibrary */,
 				9E4137D32D97E63100634ACB /* Socket */,
+				9E4137D72D97E63100634ACB /* KeyboardShortcuts */,
 			);
 			productName = SwipeAeroSpace;
 			productReference = 9E04C59A2D44E5FB00320146 /* SwipeAeroSpace.app */;
@@ -105,6 +108,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				9E4137D02D97E63100634ACB /* XCRemoteSwiftPackageReference "BlueSocket" */,
+				9E4137D62D97E63100634ACB /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 9E04C59B2D44E5FB00320146 /* Products */;
@@ -351,6 +355,14 @@
 				minimumVersion = 2.0.4;
 			};
 		};
+		9E4137D62D97E63100634ACB /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sindresorhus/KeyboardShortcuts";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -363,6 +375,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 9E4137D02D97E63100634ACB /* XCRemoteSwiftPackageReference "BlueSocket" */;
 			productName = Socket;
+		};
+		9E4137D72D97E63100634ACB /* KeyboardShortcuts */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9E4137D62D97E63100634ACB /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */;
+			productName = KeyboardShortcuts;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
