@@ -1,8 +1,15 @@
 import Cocoa
 import Foundation
+import KeyboardShortcuts
 import Socket
 import SwiftUI
 import os
+
+extension KeyboardShortcuts.Name {
+    static let toggleOverview = Self("toggleOverview")
+    static let nextWorkspace = Self("nextWorkspace")
+    static let prevWorkspace = Self("prevWorkspace")
+}
 
 enum Direction {
     case next
@@ -239,6 +246,17 @@ class SwipeManager {
             "list-workspaces", "--monitor", "focused", "--empty", "no",
         ]
         return runCommand(args: args, stdin: "")
+    }
+
+    func toggleWorkspaceOverview() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            if self.overlayController.isVisible {
+                self.overlayController.dismiss()
+            } else {
+                self.showWorkspaceOverview()
+            }
+        }
     }
 
     func showWorkspaceOverview() {
@@ -660,6 +678,7 @@ class SwipeManager {
             logger.warning("SwipeManager is already started")
             return
         }
+        registerShortcuts()
         logger.info("SwipeManager start")
         eventTap = CGEvent.tapCreate(
             tap: .cghidEventTap,
@@ -725,6 +744,7 @@ class SwipeManager {
     }
 
     func stop() {
+        unregisterShortcuts()
         logger.info("stop the app")
         heartbeatTimer?.cancel()
         heartbeatTimer = nil
@@ -760,6 +780,28 @@ class SwipeManager {
             }
         }
         return Unmanaged.passUnretained(cgEvent)
+    }
+
+    private func registerShortcuts() {
+        // onKeyDown appends listeners, so clear our handlers before re-registering.
+        unregisterShortcuts()
+        KeyboardShortcuts.onKeyDown(for: .toggleOverview) { [weak self] in
+            self?.toggleWorkspaceOverview()
+        }
+        KeyboardShortcuts.onKeyDown(for: .nextWorkspace) { [weak self] in
+            self?.nextWorkspace()
+        }
+        KeyboardShortcuts.onKeyDown(for: .prevWorkspace) { [weak self] in
+            self?.prevWorkspace()
+        }
+    }
+
+    private func unregisterShortcuts() {
+        // removeHandler detaches both the listener and the hotkey, unlike
+        // disable() which leaves handlers attached.
+        for name in [KeyboardShortcuts.Name.toggleOverview, .nextWorkspace, .prevWorkspace] {
+            KeyboardShortcuts.removeHandler(for: name)
+        }
     }
 
     private func touchEventHandler(_ nsEvent: NSEvent) {
