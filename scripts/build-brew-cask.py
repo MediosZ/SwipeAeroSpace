@@ -51,7 +51,7 @@ def main():
 
   depends_on macos: :ventura # macOS 13
 
-  postflight do
+  postflight_steps do
     system "xattr -d com.apple.quarantine #{{appdir}}/{app_bundle_dir_name}"
   end
 
