@@ -1,8 +1,15 @@
 import Cocoa
 import Foundation
+import KeyboardShortcuts
 import Socket
 import SwiftUI
 import os
+
+extension KeyboardShortcuts.Name {
+    static let toggleOverview = Self("toggleOverview")
+    static let nextWorkspace = Self("nextWorkspace")
+    static let prevWorkspace = Self("prevWorkspace")
+}
 
 enum Direction {
     case next
@@ -235,6 +242,17 @@ class SwipeManager {
             "list-workspaces", "--monitor", "focused", "--empty", "no",
         ]
         return runCommand(args: args, stdin: "")
+    }
+
+    func toggleWorkspaceOverview() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            if self.overlayController.isVisible {
+                self.overlayController.dismiss()
+            } else {
+                self.showWorkspaceOverview()
+            }
+        }
     }
 
     func showWorkspaceOverview() {
@@ -542,6 +560,7 @@ class SwipeManager {
     }
 
     func start() {
+        registerShortcuts()
         if eventTap != nil {
             logger.warning("SwipeManager is already started")
             return
@@ -580,6 +599,7 @@ class SwipeManager {
     }
 
     func stop() {
+        unregisterShortcuts()
         logger.info("stop the app")
         workQueue.async {
             self.socket?.close()
@@ -606,6 +626,22 @@ class SwipeManager {
             CGEvent.tapEnable(tap: eventTap!, enable: true)
         }
         return Unmanaged.passUnretained(cgEvent)
+    }
+
+    private func registerShortcuts() {
+        KeyboardShortcuts.onKeyDown(for: .toggleOverview) { [weak self] in
+            self?.toggleWorkspaceOverview()
+        }
+        KeyboardShortcuts.onKeyDown(for: .nextWorkspace) { [weak self] in
+            self?.nextWorkspace()
+        }
+        KeyboardShortcuts.onKeyDown(for: .prevWorkspace) { [weak self] in
+            self?.prevWorkspace()
+        }
+    }
+
+    private func unregisterShortcuts() {
+        KeyboardShortcuts.disable(.toggleOverview, .nextWorkspace, .prevWorkspace)
     }
 
     private func touchEventHandler(_ nsEvent: NSEvent) {

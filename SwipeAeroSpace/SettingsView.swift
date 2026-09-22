@@ -1,3 +1,4 @@
+import KeyboardShortcuts
 import SwiftUI
 
 struct SettingsView: View {
@@ -160,6 +161,35 @@ struct SettingsView: View {
                         Toggle("", isOn: $showEmptyWorkspaces)
                             .labelsHidden()
                     }
+                }
+            }
+            .padding(.horizontal, 32)
+            .padding(.bottom, 16)
+
+            sectionDivider()
+
+            // MARK: - Keyboard Shortcuts
+            sectionHeader("Keyboard Shortcuts")
+            VStack(alignment: .leading, spacing: 12) {
+                settingRow(
+                    title: "Workspace Overview",
+                    description: "Global shortcut to show or hide the workspace overview"
+                ) {
+                    KeyboardShortcuts.Recorder(for: .toggleOverview)
+                }
+
+                settingRow(
+                    title: "Next Workspace",
+                    description: "Global shortcut to switch to the next AeroSpace workspace"
+                ) {
+                    KeyboardShortcuts.Recorder(for: .nextWorkspace)
+                }
+
+                settingRow(
+                    title: "Previous Workspace",
+                    description: "Global shortcut to switch to the previous AeroSpace workspace"
+                ) {
+                    KeyboardShortcuts.Recorder(for: .prevWorkspace)
                 }
             }
             .padding(.horizontal, 32)
