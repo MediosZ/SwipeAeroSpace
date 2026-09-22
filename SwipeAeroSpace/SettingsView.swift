@@ -3,7 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @AppStorage("threshold") private static var swipeThreshold: Double = 1.0
     @AppStorage("wrap") private var wrapWorkspace: Bool = false
-    @AppStorage("natrual") private var naturalSwipe: Bool = true
+    @AppStorage("natural") private var naturalSwipe: Bool = true
     @AppStorage("skip-empty") private var skipEmpty: Bool = false
     @AppStorage("fingers") private var fingers: String = "Three"
     @AppStorage("multiSwipe") private var multiSwipeEnabled: Bool = true
