@@ -1,16 +1,18 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @AppStorage("threshold") private static var swipeThreshold: Double = 1.0
-    @AppStorage("wrap") private var wrapWorkspace: Bool = false
-    @AppStorage("natural") private var naturalSwipe: Bool = true
-    @AppStorage("skip-empty") private var skipEmpty: Bool = false
-    @AppStorage("fingers") private var fingers: String = "Three"
-    @AppStorage("multiSwipe") private var multiSwipeEnabled: Bool = true
-    @AppStorage("maxSteps") private var maxSteps: Int = 5
-    @AppStorage("swipeUpOverview") private var swipeUpOverviewEnabled: Bool = true
-    @AppStorage("swipeUpFingers") private var swipeUpFingers: String = "Three"
-    @AppStorage("show-empty-workspaces") private var showEmptyWorkspaces: Bool = false
+    @ObservedObject private var configuration = Configuration.shared
+    @Environment(\.scenePhase) private var scenePhase
+    @ConfigStorage("threshold") private var swipeThreshold: Double = 1.0
+    @ConfigStorage("wrap") private var wrapWorkspace: Bool = false
+    @ConfigStorage("natural") private var naturalSwipe: Bool = true
+    @ConfigStorage("skip-empty") private var skipEmpty: Bool = false
+    @ConfigStorage("fingers") private var fingers: String = "Three"
+    @ConfigStorage("multiSwipe") private var multiSwipeEnabled: Bool = true
+    @ConfigStorage("maxSteps") private var maxSteps: Int = 5
+    @ConfigStorage("swipeUpOverview") private var swipeUpOverviewEnabled: Bool = true
+    @ConfigStorage("swipeUpFingers") private var swipeUpFingers: String = "Three"
+    @ConfigStorage("show-empty-workspaces") private var showEmptyWorkspaces: Bool = false
 
     @State private var numberFormatter: NumberFormatter = {
         var nf = NumberFormatter()
@@ -25,6 +27,18 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+
+            if let error = configuration.errorMessage {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, 32)
+            } else if !configuration.values.isEmpty {
+                Text("Settings defined in config.toml are read-only. Reload the config after editing the file.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 32)
+            }
 
             // MARK: - Connection
             sectionHeader("Connection")
@@ -52,12 +66,13 @@ struct SettingsView: View {
             sectionHeader("Horizontal Swipe")
             VStack(alignment: .leading, spacing: 12) {
                 settingRow(
+                    key: "threshold",
                     title: "Sensitivity",
                     description: "Lower values require less finger movement to switch. Default: 1.0"
                 ) {
                     TextField(
                         "Sensitivity",
-                        value: SettingsView.$swipeThreshold,
+                        value: $swipeThreshold,
                         formatter: numberFormatter,
                         prompt: Text("1.0")
                     )
@@ -66,6 +81,7 @@ struct SettingsView: View {
                 }
 
                 settingRow(
+                    key: "fingers",
                     title: "Number of Fingers",
                     description: "How many fingers trigger a horizontal workspace switch"
                 ) {
@@ -77,6 +93,7 @@ struct SettingsView: View {
                 }
 
                 settingRow(
+                    key: "natural",
                     title: "Natural Swipe",
                     description: "Swipe direction matches finger movement, like trackpad scrolling"
                 ) {
@@ -85,6 +102,7 @@ struct SettingsView: View {
                 }
 
                 settingRow(
+                    key: "wrap",
                     title: "Wrap Around",
                     description: "Swiping past the last workspace jumps back to the first"
                 ) {
@@ -93,6 +111,7 @@ struct SettingsView: View {
                 }
 
                 settingRow(
+                    key: "skip-empty",
                     title: "Skip Empty",
                     description: "Only land on workspaces that have windows"
                 ) {
@@ -101,6 +120,7 @@ struct SettingsView: View {
                 }
 
                 settingRow(
+                    key: "multiSwipe",
                     title: "Multi-Workspace Swipe",
                     description: "Longer swipes jump multiple workspaces in one gesture"
                 ) {
@@ -110,6 +130,7 @@ struct SettingsView: View {
 
                 if multiSwipeEnabled {
                     settingRow(
+                        key: "maxSteps",
                         title: "Max per Swipe: \(maxSteps)",
                         description: "Maximum number of workspaces a single swipe can jump"
                     ) {
@@ -134,6 +155,7 @@ struct SettingsView: View {
             sectionHeader("Workspace Overview")
             VStack(alignment: .leading, spacing: 12) {
                 settingRow(
+                    key: "swipeUpOverview",
                     title: "Enable Overview",
                     description: "Swipe up to see all workspaces and their apps"
                 ) {
@@ -143,6 +165,7 @@ struct SettingsView: View {
 
                 if swipeUpOverviewEnabled {
                     settingRow(
+                        key: "swipeUpFingers",
                         title: "Number of Fingers",
                         description: "How many fingers trigger the workspace overview"
                     ) {
@@ -154,6 +177,7 @@ struct SettingsView: View {
                     }
 
                     settingRow(
+                        key: "show-empty-workspaces",
                         title: "Show Empty Workspaces",
                         description: "Include empty workspaces in the workspace overview"
                     ) {
@@ -170,6 +194,13 @@ struct SettingsView: View {
             // MARK: - General
             sectionHeader("General")
             VStack(alignment: .leading, spacing: 12) {
+                if configuration.fileExists {
+                    Button("Reload Config") {
+                        configuration.reload()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
                 LaunchAtLogin.Toggle {
                     Text("Launch at Login")
                 }
@@ -179,6 +210,12 @@ struct SettingsView: View {
         }
         .padding(.vertical, 8)
         .frame(width: 600)
+        .onAppear { configuration.refreshFilePresence() }
+        .onChange(of: scenePhase) { phase in
+            if phase == .active {
+                configuration.refreshFilePresence()
+            }
+        }
     }
 
     // MARK: - Components
@@ -199,6 +236,7 @@ struct SettingsView: View {
     }
 
     private func settingRow<Content: View>(
+        key: String,
         title: String,
         description: String,
         @ViewBuilder control: () -> Content
@@ -214,6 +252,7 @@ struct SettingsView: View {
             }
             Spacer()
             control()
+                .disabled(configuration.values[key] != nil)
         }
     }
 }

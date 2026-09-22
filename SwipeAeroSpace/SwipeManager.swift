@@ -87,17 +87,17 @@ extension Result {
 
 class SwipeManager {
     // user settings
-    @AppStorage("threshold") private var swipeThreshold: Double = 1.0
+    @ConfigStorage("threshold") private var swipeThreshold: Double = 1.0
     private var internalThreshold: Float { Float(swipeThreshold) * 0.05 }
-    @AppStorage("wrap") private var wrapWorkspace: Bool = false
-    @AppStorage("natural") private var naturalSwipe: Bool = true
-    @AppStorage("skip-empty") private var skipEmpty: Bool = false
-    @AppStorage("fingers") private var fingers: String = "Three"
-    @AppStorage("multiSwipe") private var multiSwipeEnabled: Bool = true
-    @AppStorage("maxSteps") private var maxSteps: Int = 5
-    @AppStorage("swipeUpOverview") private var swipeUpOverviewEnabled: Bool = true
-    @AppStorage("swipeUpFingers") private var swipeUpFingers: String = "Three"
-    @AppStorage("show-empty-workspaces") private var showEmptyWorkspaces: Bool = false
+    @ConfigStorage("wrap") private var wrapWorkspace: Bool = false
+    @ConfigStorage("natural") private var naturalSwipe: Bool = true
+    @ConfigStorage("skip-empty") private var skipEmpty: Bool = false
+    @ConfigStorage("fingers") private var fingers: String = "Three"
+    @ConfigStorage("multiSwipe") private var multiSwipeEnabled: Bool = true
+    @ConfigStorage("maxSteps") private var maxSteps: Int = 5
+    @ConfigStorage("swipeUpOverview") private var swipeUpOverviewEnabled: Bool = true
+    @ConfigStorage("swipeUpFingers") private var swipeUpFingers: String = "Three"
+    @ConfigStorage("show-empty-workspaces") private var showEmptyWorkspaces: Bool = false
 
     var socketInfo = SocketInfo()
 

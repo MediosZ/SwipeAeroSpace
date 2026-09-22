@@ -9,3 +9,7 @@ build*/
 
 # Agent planning artifacts
 .agent/
+
+# Swift Package Manager test harness
+.build/
+.swiftpm/
