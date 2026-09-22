@@ -35,7 +35,7 @@ func checkAccessibilityPermissions() {
 
 @main
 struct SwipeAeroSpaceApp: App {
-    @ConfigStorage("menuBarExtraIsInserted") var menuBarExtraIsInserted = true
+    @AppStorage("menuBarExtraIsInserted") var menuBarExtraIsInserted = true
     @Environment(\.openWindow) private var openWindow
     @State var swipeManager = SwipeManager()
 

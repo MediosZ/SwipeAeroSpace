@@ -48,7 +48,7 @@ On launch, SwipeAeroSpace reads `$HOME/.config/swipeareospace/config.toml`
 (note the directory spelling). Create this file to override settings saved in
 UserDefaults. Only keys present in the file are overridden; other settings keep
 their saved values or built-in defaults. Removing the file restores saved settings
-on the next launch. The file never overwrites UserDefaults.
+after reloading or on the next launch. The file never overwrites UserDefaults.
 
 Example with all supported keys and their built-in defaults:
 
@@ -63,13 +63,15 @@ maxSteps = 5                     # Integer from 2 through 9
 swipeUpOverview = true
 swipeUpFingers = "Three"         # "Three" or "Four"
 show-empty-workspaces = false
-menuBarExtraIsInserted = true
 ```
 
-Use top-level keys as shown above. Restart the app after editing the file.
+Use top-level keys as shown above. Click **Reload Config** in Settings after editing
+the file, or restart the app. The button appears when the config file exists,
+including when it is empty or invalid.
 File-controlled settings are read-only in the Settings window; settings omitted
 from the file remain editable and are saved to UserDefaults. Launch at Login is
-managed separately by macOS and is not a config key.
+managed separately by macOS and is not a config key. Menu bar visibility remains
+a UserDefaults preference and is not configurable through TOML.
 
 If the file is missing, the app uses UserDefaults as before. If it is unreadable,
 contains invalid TOML, unknown keys, or invalid values, the entire file is ignored.

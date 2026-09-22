@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @ObservedObject private var configuration = Configuration.shared
+    @Environment(\.scenePhase) private var scenePhase
     @ConfigStorage("threshold") private var swipeThreshold: Double = 1.0
     @ConfigStorage("wrap") private var wrapWorkspace: Bool = false
     @ConfigStorage("natural") private var naturalSwipe: Bool = true
@@ -26,13 +28,13 @@ struct SettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
 
-            if let error = Configuration.shared.errorMessage {
+            if let error = configuration.errorMessage {
                 Text(error)
                     .font(.caption)
                     .foregroundStyle(.red)
                     .padding(.horizontal, 32)
-            } else if !Configuration.shared.values.isEmpty {
-                Text("Settings defined in config.toml are read-only. Restart the app after editing the file.")
+            } else if !configuration.values.isEmpty {
+                Text("Settings defined in config.toml are read-only. Reload the config after editing the file.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 32)
@@ -192,6 +194,13 @@ struct SettingsView: View {
             // MARK: - General
             sectionHeader("General")
             VStack(alignment: .leading, spacing: 12) {
+                if configuration.fileExists {
+                    Button("Reload Config") {
+                        configuration.reload()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
                 LaunchAtLogin.Toggle {
                     Text("Launch at Login")
                 }
@@ -201,6 +210,12 @@ struct SettingsView: View {
         }
         .padding(.vertical, 8)
         .frame(width: 600)
+        .onAppear { configuration.refreshFilePresence() }
+        .onChange(of: scenePhase) { phase in
+            if phase == .active {
+                configuration.refreshFilePresence()
+            }
+        }
     }
 
     // MARK: - Components
@@ -237,7 +252,7 @@ struct SettingsView: View {
             }
             Spacer()
             control()
-                .disabled(Configuration.shared.values[key] != nil)
+                .disabled(configuration.values[key] != nil)
         }
     }
 }

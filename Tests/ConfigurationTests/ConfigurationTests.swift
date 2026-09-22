@@ -70,9 +70,8 @@ final class ConfigurationTests: XCTestCase {
         swipeUpOverview = false
         swipeUpFingers = "Three"
         show-empty-workspaces = true
-        menuBarExtraIsInserted = true
         """)
-        XCTAssertEqual(values.count, 11)
+        XCTAssertEqual(values.count, 10)
         XCTAssertEqual(values["threshold"] as? Double, 1.0)
         XCTAssertEqual(values["maxSteps"] as? Int, 9)
         XCTAssertEqual(values["fingers"] as? String, "Four")
@@ -93,7 +92,7 @@ final class ConfigurationTests: XCTestCase {
             "wrap =", "wrap = true\nwrap = false", "wrap = 'true'", "maxSteps = 2.5",
             "maxSteps = 1", "maxSteps = 10", "threshold = 0", "threshold = -1.0",
             "threshold = nan", "threshold = inf", "fingers = 'Five'", "swipeUpFingers = 3",
-            "typo = true", "[unexpected]\nwrap = true",
+            "menuBarExtraIsInserted = false", "typo = true", "[unexpected]\nwrap = true",
         ] {
             let config = try load("natural = false\n" + invalid)
             XCTAssertNotNil(config.errorMessage, invalid)
@@ -106,6 +105,58 @@ final class ConfigurationTests: XCTestCase {
         let config = Configuration(url: file)
         XCTAssertTrue(config.values.isEmpty)
         XCTAssertNotNil(config.errorMessage)
+    }
+
+    func testReloadUpdatesExistingBindingsAndRestoresRemovedKeys() throws {
+        defaults.set(2.5, forKey: "threshold")
+        let config = try load("threshold = 0.75")
+        let threshold = ConfigStorage(wrappedValue: 1.0, "threshold", store: defaults, configuration: config)
+        let binding = threshold.projectedValue
+        XCTAssertEqual(binding.wrappedValue, 0.75)
+
+        try "threshold = 1.5".write(to: file, atomically: true, encoding: .utf8)
+        config.reload()
+        XCTAssertEqual(binding.wrappedValue, 1.5)
+        XCTAssertEqual(defaults.double(forKey: "threshold"), 2.5)
+
+        try "wrap = true".write(to: file, atomically: true, encoding: .utf8)
+        config.reload()
+        XCTAssertEqual(binding.wrappedValue, 2.5)
+        binding.wrappedValue = 3.0
+        XCTAssertEqual(defaults.double(forKey: "threshold"), 3.0)
+    }
+
+    func testReloadInvalidFileThenRecoveryAndDeletion() throws {
+        let config = try load("wrap = true")
+        let wrap = ConfigStorage(wrappedValue: false, "wrap", store: defaults, configuration: config)
+        XCTAssertTrue(wrap.wrappedValue)
+        try "wrap =".write(to: file, atomically: true, encoding: .utf8)
+        config.reload()
+        XCTAssertNotNil(config.errorMessage)
+        XCTAssertTrue(config.fileExists)
+        XCTAssertFalse(wrap.wrappedValue)
+
+        try "wrap = true".write(to: file, atomically: true, encoding: .utf8)
+        config.reload()
+        XCTAssertNil(config.errorMessage)
+        XCTAssertTrue(wrap.wrappedValue)
+
+        try FileManager.default.removeItem(at: file)
+        config.reload()
+        XCTAssertNil(config.errorMessage)
+        XCTAssertFalse(config.fileExists)
+        XCTAssertFalse(wrap.wrappedValue)
+    }
+
+    func testFilePresenceRefreshDetectsNewEmptyFile() throws {
+        let config = Configuration(url: file)
+        XCTAssertFalse(config.fileExists)
+        try "".write(to: file, atomically: true, encoding: .utf8)
+        config.refreshFilePresence()
+        XCTAssertTrue(config.fileExists)
+        config.reload()
+        XCTAssertTrue(config.values.isEmpty)
+        XCTAssertNil(config.errorMessage)
     }
 
     func testRequestedPath() {

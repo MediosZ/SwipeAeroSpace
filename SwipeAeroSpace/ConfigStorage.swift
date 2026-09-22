@@ -5,7 +5,7 @@ import SwiftUI
 struct ConfigStorage<Value>: DynamicProperty {
     @AppStorage private var savedValue: Value
     private let key: String
-    private let configuration: Configuration
+    @ObservedObject private var configuration: Configuration
 
     private init(key: String, storage: AppStorage<Value>, configuration: Configuration) {
         self.key = key
