@@ -116,6 +116,13 @@ class SwipeManager {
     private var state: GestureState = .ended
     private var swipeAxis: SwipeAxis = .undecided
     private var activeFingerCount: Int = 0
+    // Consecutive frames seen with fewer fingers down than the gesture started
+    // with, and how many of them to tolerate before movement stops counting.
+    // Measured liftoff tails top out around 9 frames (~75ms at the trackpad's
+    // ~125Hz), so 12 clears them with margin while capping a stray finger at
+    // roughly a tenth of a second of travel.
+    private var lowFingerFrames: Int = 0
+    private static let lowFingerGraceFrames = 12
     private var gestureFocusDone: Bool = false
     private var pendingSwipeWork: DispatchWorkItem? = nil
     private var socket: Socket? = nil
@@ -665,8 +672,33 @@ class SwipeManager {
         }
         if state == .began {
             let (disX, disY) = swipeDistance(touches: touches)
-            accDisX += disX
-            accDisY += disY
+            // Once the axis is locked the guard above stops running, so nothing
+            // re-checks the live finger count for the rest of the gesture:
+            // `activeFingerCount` stays latched at the count the gesture started
+            // with, and a single remaining finger keeps driving workspace
+            // switches until every finger leaves the trackpad.
+            //
+            // Stop accumulating while short-handed, but only after the count has
+            // stayed down for a while. Fingers lift unevenly and, on a quick
+            // flick, are still moving as they leave: measured traces show the
+            // 3 -> 2 -> 1 -> 0 tail running up to 9 frames, which on a short
+            // swipe is nearly half its length. Discarding that tail outright
+            // costs real distance and makes fast swipes under-travel. A stray
+            // finger left behind lasts far longer than any liftoff, so a grace
+            // window separates the two cleanly.
+            //
+            // `swipeDistance` is called unconditionally so `prevTouchPositions`
+            // stays current — a re-landed finger then contributes 0 on its first
+            // frame instead of a jump.
+            if count < activeFingerCount {
+                lowFingerFrames += 1
+            } else {
+                lowFingerFrames = 0
+            }
+            if lowFingerFrames <= Self.lowFingerGraceFrames {
+                accDisX += disX
+                accDisY += disY
+            }
 
             // Lock axis once we have enough movement
             if swipeAxis == .undecided {
@@ -778,6 +810,7 @@ class SwipeManager {
         swipeUpFired = false
         swipeAxis = .undecided
         activeFingerCount = 0
+        lowFingerFrames = 0
         gestureFocusDone = false
         prevTouchPositions.removeAll()
     }
