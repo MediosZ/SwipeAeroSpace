@@ -17,9 +17,11 @@ let package = Package(
                 "SwipeAeroSpace.entitlements", "SwipeAeroSpaceApp.swift", "SwipeManager.swift",
                 "WorkspaceOverlayView.swift",
             ],
-            sources: ["Configuration.swift", "ConfigStorage.swift"]
+            sources: ["Configuration.swift", "ConfigStorage.swift", "OverviewSelection.swift"]
         ),
         .testTarget(name: "ConfigurationTests", dependencies: ["ConfigurationSupport"],
                     path: "Tests/ConfigurationTests"),
+        .testTarget(name: "OverviewTests", dependencies: ["ConfigurationSupport"],
+                    path: "Tests/OverviewTests"),
     ]
 )
