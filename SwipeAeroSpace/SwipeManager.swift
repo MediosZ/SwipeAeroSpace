@@ -88,7 +88,9 @@ extension Result {
 class SwipeManager {
     // user settings
     @ConfigStorage("threshold") private var swipeThreshold: Double = 1.0
-    private var internalThreshold: Float { Float(swipeThreshold) * 0.05 }
+    // Clamp to 0.1 so a zero/negative sensitivity can't produce a zero
+    // threshold — Int(accDisX / threshold) would trap on inf/NaN.
+    private var internalThreshold: Float { max(Float(swipeThreshold), 0.1) * 0.05 }
     @ConfigStorage("wrap") private var wrapWorkspace: Bool = false
     @ConfigStorage("natural") private var naturalSwipe: Bool = true
     @ConfigStorage("skip-empty") private var skipEmpty: Bool = false
@@ -473,8 +475,10 @@ class SwipeManager {
         if DispatchQueue.getSpecific(key: Self.queueKey) != nil {
             performConnectSocket(reconnect: reconnect)
         } else {
-            workQueue.sync {
-                self.performConnectSocket(reconnect: reconnect)
+            // Async so a slow/stalled socket handshake never blocks the
+            // main thread (start() runs this during app launch).
+            workQueue.async { [weak self] in
+                self?.performConnectSocket(reconnect: reconnect)
             }
         }
     }
@@ -581,11 +585,16 @@ class SwipeManager {
 
     func stop() {
         logger.info("stop the app")
-        workQueue.async {
-            self.socket?.close()
-            self.socket = nil
+        if let eventTap = eventTap {
+            CGEvent.tapEnable(tap: eventTap, enable: false)
+            CFMachPortInvalidate(eventTap)
+            self.eventTap = nil
+        }
+        workQueue.async { [weak self] in
+            self?.socket?.close()
+            self?.socket = nil
             DispatchQueue.main.async {
-                self.socketInfo.socketConnected = false
+                self?.socketInfo.socketConnected = false
             }
         }
     }
@@ -603,7 +612,9 @@ class SwipeManager {
             || eventType == .tapDisabledByTimeout
         {
             logger.info("SwipeManager tap disabled \(eventType.rawValue)")
-            CGEvent.tapEnable(tap: eventTap!, enable: true)
+            if let eventTap = eventTap {
+                CGEvent.tapEnable(tap: eventTap, enable: true)
+            }
         }
         return Unmanaged.passUnretained(cgEvent)
     }

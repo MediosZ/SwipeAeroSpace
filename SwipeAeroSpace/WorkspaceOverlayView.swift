@@ -154,6 +154,30 @@ struct WorkspaceCard: View {
     var isHoveredExternally: Bool = false
     @State private var isHovered = false
 
+    private static let iconCache = NSCache<NSString, NSImage>()
+
+    private static func appIcon(for appName: String) -> NSImage {
+        if let cached = iconCache.object(forKey: appName as NSString) {
+            return cached
+        }
+        let applicationDirs = [
+            "/Applications",
+            "/System/Applications",
+            NSString(string: NSHomeDirectory()).appendingPathComponent("Applications"),
+        ]
+        var icon: NSImage? = nil
+        for dir in applicationDirs {
+            let path = "\(dir)/\(appName).app"
+            if FileManager.default.fileExists(atPath: path) {
+                icon = NSWorkspace.shared.icon(forFile: path)
+                break
+            }
+        }
+        let result = icon ?? NSWorkspace.shared.icon(forFileType: "app")
+        iconCache.setObject(result, forKey: appName as NSString)
+        return result
+    }
+
     private var highlighted: Bool { isHovered || isHoveredExternally }
 
     var body: some View {
@@ -181,9 +205,7 @@ struct WorkspaceCard: View {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(workspace.windows) { win in
                         HStack(spacing: 5) {
-                            let icon = NSWorkspace.shared.icon(
-                                forFile: appPath(for: win.appName))
-                            Image(nsImage: icon)
+                            Image(nsImage: Self.appIcon(for: win.appName))
                                 .resizable()
                                 .frame(width: 15, height: 15)
                             Text(win.appName)
@@ -213,10 +235,6 @@ struct WorkspaceCard: View {
             isHovered = hovering
         }
         .contentShape(Rectangle())
-    }
-
-    private func appPath(for appName: String) -> String {
-        "/Applications/\(appName).app"
     }
 }
 
@@ -294,9 +312,14 @@ class OverlayPanelController {
 
         // Show on the screen where the cursor is
         let mouseLocation = NSEvent.mouseLocation
-        let screen = NSScreen.screens.first(where: {
-            NSPointInRect(mouseLocation, $0.frame)
-        }) ?? NSScreen.main ?? NSScreen.screens.first!
+        guard
+            let screen = NSScreen.screens.first(where: {
+                NSPointInRect(mouseLocation, $0.frame)
+            }) ?? NSScreen.main ?? NSScreen.screens.first
+        else {
+            isVisible = false
+            return
+        }
         let screenFrame = screen.visibleFrame
 
         let panelWidth = min(width, screenFrame.width * 0.9)
@@ -373,14 +396,17 @@ class OverlayPanelController {
         overlayState.hoveredWorkspace = nil
         overlayState.focusedMonitorId = nil
 
-        // Animate out, then tear down
+        // Animate out, then tear down. Capture the closing panel so a new
+        // overlay shown within the animation window isn't torn down instead.
         withAnimation(.easeIn(duration: 0.1)) {
             overlayState.visible = false
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [self] in
-            overlayState.workspaces = []
-            panel?.orderOut(nil)
-            panel = nil
+        let closingPanel = panel
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            closingPanel?.orderOut(nil)
+            guard let self, self.panel === closingPanel else { return }
+            self.panel = nil
+            self.overlayState.workspaces = []
         }
 
         if let localMonitor = localMonitor {

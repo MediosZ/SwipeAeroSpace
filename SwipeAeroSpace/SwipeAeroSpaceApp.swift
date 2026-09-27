@@ -20,7 +20,7 @@ struct SettingsButton: View {
 
 func checkAccessibilityPermissions() {
     let options = [
-        kAXTrustedCheckOptionPrompt.takeRetainedValue() as String: true
+        kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true
     ]
     if !AXIsProcessTrustedWithOptions(options as CFDictionary) {
         _ = try? Process.run(
