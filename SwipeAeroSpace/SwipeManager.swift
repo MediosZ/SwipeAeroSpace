@@ -401,24 +401,100 @@ class SwipeManager {
         direction: Direction, modifiers: NSEvent.ModifierFlags
     ) -> Result<String, SwipeError> {
         var args: [String]
-        var stdin = ""
         if modifiers.contains(.shift) {
             args = ["move-node-to-workspace", direction.value]
         } else if modifiers.contains(.control) {
             args = ["focus-monitor", direction.value]
+        } else if skipEmpty {
+            guard let target = skipEmptyTarget(direction: direction) else {
+                return .success("")
+            }
+            args = ["workspace", target]
         } else {
             args = ["workspace", direction.value]
-            if skipEmpty {
-                if let ws = try? getNonEmptyWorkspaces().get(), !ws.isEmpty {
-                    stdin = ws
-                    args.append("--stdin")
-                }
-            }
         }
-        if wrapWorkspace {
+        if wrapWorkspace && args.last == direction.value {
             args.append("--wrap-around")
         }
-        return runCommand(args: args, stdin: stdin)
+        return runCommand(args: args, stdin: "")
+    }
+
+    /// Resolve the neighbouring non-empty workspace ourselves instead of
+    /// relying on `workspace next/prev --stdin`: AeroSpace navigates as if
+    /// the focus were on the first workspace of the stdin list whenever the
+    /// focused workspace isn't in that list — e.g. right after its last
+    /// window closed (#15).
+    private func skipEmptyTarget(direction: Direction) -> String? {
+        let focusedResult = runCommand(
+            args: ["list-workspaces", "--focused"], stdin: ""
+        )
+        guard let focusedOutput = try? focusedResult.get() else { return nil }
+        let focusedWs = focusedOutput.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        guard let occupiedOutput = try? getNonEmptyWorkspaces().get() else {
+            return nil
+        }
+        let occupied = occupiedOutput
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        guard !occupied.isEmpty else { return nil }
+
+        if let index = occupied.firstIndex(of: focusedWs) {
+            guard
+                let neighborIndex = neighbor(
+                    of: index, count: occupied.count, direction: direction
+                )
+            else { return nil }
+            return occupied[neighborIndex]
+        }
+
+        // The focused workspace is empty: locate it among all workspaces
+        // on the monitor and pick the nearest occupied neighbour.
+        guard let allOutput = try? runCommand(
+            args: ["list-workspaces", "--monitor", "focused"], stdin: ""
+        ).get() else { return nil }
+        let all = allOutput
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        guard let focusedIndex = all.firstIndex(of: focusedWs) else {
+            return direction == .next ? occupied.first : occupied.last
+        }
+
+        let occupiedPositions = all.enumerated().compactMap {
+            pos, name -> (pos: Int, occupiedIndex: Int)? in
+            occupied.firstIndex(of: name).map { (pos, $0) }
+        }
+        switch direction {
+        case .next:
+            if let ahead = occupiedPositions.first(where: { $0.pos > focusedIndex }) {
+                return occupied[ahead.occupiedIndex]
+            }
+            return wrapWorkspace ? occupied.first : nil
+        case .prev:
+            if let behind = occupiedPositions.last(where: { $0.pos < focusedIndex }) {
+                return occupied[behind.occupiedIndex]
+            }
+            return wrapWorkspace ? occupied.last : nil
+        }
+    }
+
+    private func neighbor(
+        of index: Int, count: Int, direction: Direction
+    ) -> Int? {
+        switch direction {
+        case .next:
+            let next = index + 1
+            if next < count { return next }
+            return wrapWorkspace ? 0 : nil
+        case .prev:
+            let prev = index - 1
+            if prev >= 0 { return prev }
+            return wrapWorkspace ? count - 1 : nil
+        }
     }
 
     @discardableResult
