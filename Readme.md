@@ -65,9 +65,10 @@ swipeUpFingers = "Three"         # "Three" or "Four"
 show-empty-workspaces = false
 ```
 
-Use top-level keys as shown above. Click **Reload Config** in Settings after editing
-the file, or restart the app. The button appears when the config file exists,
-including when it is empty or invalid.
+Use top-level keys as shown above. The file is watched for changes and reloaded
+automatically, so edits take effect without restarting the app. A **Reload Config**
+button in Settings remains available as a manual fallback; it appears when the
+config file exists, including when it is empty or invalid.
 File-controlled settings are read-only in the Settings window; settings omitted
 from the file remain editable and are saved to UserDefaults. Launch at Login is
 managed separately by macOS and is not a config key. Menu bar visibility remains

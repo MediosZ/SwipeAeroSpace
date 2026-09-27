@@ -4,6 +4,7 @@ import TOMLKit
 import os
 
 /// A reloadable overlay. File values never replace the user's saved preferences.
+/// The file is watched for changes and reloaded automatically.
 final class Configuration: ObservableObject {
     static let fileURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".config/swipeareospace/config.toml")
@@ -14,6 +15,17 @@ final class Configuration: ObservableObject {
     // Gesture processing may read settings from a background queue during reload.
     private let lock = NSLock()
     private var state: Snapshot
+    private var watcher: DispatchSourceFileSystemObject?
+    private var fallbackWatcher: DispatchSourceFileSystemObject?
+    private var reloadWork: DispatchWorkItem?
+    private var fileSignature: FileSignature
+
+    private struct FileSignature: Equatable {
+        var exists: Bool
+        var inode: Int
+        var modified: Date?
+        var size: Int
+    }
 
     private struct Snapshot {
         var values: [String: Any] = [:]
@@ -34,6 +46,93 @@ final class Configuration: ObservableObject {
     init(url: URL = Configuration.fileURL) {
         self.url = url
         state = Self.load(url: url)
+        fileSignature = Self.signature(of: url)
+        armWatcher()
+    }
+
+    deinit {
+        watcher?.cancel()
+        fallbackWatcher?.cancel()
+    }
+
+    /// Auto-reload: watch the config file's directory (editors replace files
+    /// atomically, which invalidates a vnode watch on the file itself). When
+    /// the directory doesn't exist yet, watch its parent so that creating the
+    /// directory (or the file) re-arms this watcher.
+    private func armWatcher() {
+        let directoryURL = url.deletingLastPathComponent()
+        if watcher == nil {
+            watcher = watchDirectory(directoryURL) { [weak self] in
+                self?.handleDirectoryEvent()
+            }
+        }
+        if watcher == nil && fallbackWatcher == nil {
+            fallbackWatcher = watchDirectory(
+                directoryURL.deletingLastPathComponent()
+            ) { [weak self] in
+                self?.armWatcher()
+            }
+        }
+    }
+
+    private func watchDirectory(
+        _ directory: URL, handler: @escaping () -> Void
+    ) -> DispatchSourceFileSystemObject? {
+        let fd = open(directory.path, O_EVTONLY)
+        guard fd >= 0 else { return nil }
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd,
+            eventMask: [.write, .delete, .rename],
+            queue: .main
+        )
+        source.setEventHandler(handler: handler)
+        source.setCancelHandler { close(fd) }
+        source.resume()
+        return source
+    }
+
+    private func handleDirectoryEvent() {
+        scheduleReload()
+        let directoryURL = url.deletingLastPathComponent()
+        if !FileManager.default.fileExists(atPath: directoryURL.path) {
+            watcher?.cancel()
+            watcher = nil
+            armWatcher()
+        }
+    }
+
+    /// Debounced so editor save churn (atomic replace plus metadata writes)
+    /// collapses into a single reload.
+    private func scheduleReload() {
+        reloadWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.reloadIfChanged()
+        }
+        reloadWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+    }
+
+    private func reloadIfChanged() {
+        let signature = Self.signature(of: url)
+        guard signature != fileSignature else { return }
+        fileSignature = signature
+        reload()
+    }
+
+    private static func signature(of url: URL) -> FileSignature {
+        guard
+            let attributes = try? FileManager.default.attributesOfItem(
+                atPath: url.path
+            )
+        else {
+            return FileSignature(exists: false, inode: 0, modified: nil, size: 0)
+        }
+        return FileSignature(
+            exists: true,
+            inode: (attributes[.systemFileNumber] as? Int) ?? 0,
+            modified: attributes[.modificationDate] as? Date,
+            size: (attributes[.size] as? Int) ?? 0
+        )
     }
 
     /// Called by Settings on the main thread; publish the entire file at once.

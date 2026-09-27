@@ -34,7 +34,7 @@ struct SettingsView: View {
                     .foregroundStyle(.red)
                     .padding(.horizontal, 32)
             } else if !configuration.values.isEmpty {
-                Text("Settings defined in config.toml are read-only. Reload the config after editing the file.")
+                Text("Settings defined in config.toml are read-only. Changes to the file are applied automatically.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 32)
