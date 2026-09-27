@@ -74,6 +74,16 @@ it, and Escape or a swipe back down dismisses the overview. Empty workspaces
 can be included via a setting, and the overview is also available from the
 menu bar.
 
+Clicking a specific app row focuses that window directly (`focus
+--window-id`), switching workspaces automatically if needed. The overview is
+fully keyboard-driven: it is key as soon as it opens, so arrow keys move
+between workspace cards (left/right) and into a card's window rows
+(down/up), Enter confirms the selection, and Escape reverts. Typing a
+workspace name's first letters jumps straight to it — a unique match selects
+immediately, otherwise a short timeout picks the first candidate. Cards with
+more windows than fit scroll internally, and the whole grid scrolls when it
+is taller than the screen.
+
 ## Menu Bar & Settings
 
 The menu bar icon offers Workspace Overview, Next/Prev Workspace, Settings,

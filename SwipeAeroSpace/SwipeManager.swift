@@ -250,6 +250,7 @@ class SwipeManager {
 
             let makeCallbacks: () -> (
                 onSelect: (String) -> Void,
+                onSelectWindow: (String) -> Void,
                 onPreview: (String) -> Void,
                 onRevert: () -> Void
             ) = { [weak self] in
@@ -257,6 +258,18 @@ class SwipeManager {
                     onSelect: { wsName in
                         self?.workQueue.async {
                             _ = self?.runCommand(args: ["workspace", wsName], stdin: "")
+                        }
+                    },
+                    onSelectWindow: { windowId in
+                        self?.workQueue.async {
+                            switch self?.runCommand(
+                                args: ["focus", "--window-id", windowId], stdin: "")
+                            {
+                            case .failure(let err):
+                                self?.logger.error("\(err.localizedDescription)")
+                            default:
+                                break
+                            }
                         }
                     },
                     onPreview: { wsName in
@@ -279,6 +292,7 @@ class SwipeManager {
                     workspaces: shellWorkspaces,
                     focusedMonitorId: focusedMonitorId,
                     onSelect: cb.onSelect,
+                    onSelectWindow: cb.onSelectWindow,
                     onPreview: cb.onPreview,
                     onRevert: cb.onRevert
                 )
@@ -363,7 +377,7 @@ class SwipeManager {
             let winResult = runCommand(
                 args: [
                     "list-windows", "--workspace", ws.id,
-                    "--format", "%{app-name}|%{window-title}",
+                    "--format", "%{window-id}|%{app-name}|%{window-title}",
                 ],
                 stdin: ""
             )
@@ -371,14 +385,19 @@ class SwipeManager {
             if let winOutput = try? winResult.get(),
                 !winOutput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             {
-                windows = winOutput.split(separator: "\n").enumerated().map {
-                    idx, line in
-                    let parts = line.split(separator: "|", maxSplits: 1)
+                // Malformed lines (bad window ids) are skipped: a bogus id
+                // would make the row's click silently ineffective.
+                windows = winOutput.split(separator: "\n").enumerated().compactMap {
+                    idx, line -> WindowInfo? in
+                    guard let parsed = parseWindowLine(String(line)) else { return nil }
+                    // Keep the composite display id: the same window can shift
+                    // index between refreshes, and stable ids avoid animation
+                    // jitter; the window id used for focusing rides separately.
                     return WindowInfo(
                         id: "\(ws.id)-\(idx)",
-                        appName: parts.first.map(String.init) ?? "Unknown",
-                        windowTitle: parts.count > 1
-                            ? String(parts[1]) : ""
+                        windowId: parsed.windowId,
+                        appName: parsed.appName,
+                        windowTitle: parsed.windowTitle
                     )
                 }
             } else {
