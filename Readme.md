@@ -42,6 +42,19 @@ First install Xcode, then there are two options:
 
 After properly installation, you can use the 3-finger swipe to switch between AeroSpace workspaces.
 
+## Modifier Gestures
+
+Hold a modifier key when a horizontal swipe starts to remap it:
+
+- **Shift** — carry the focused window to the neighbouring workspace (`move-node-to-workspace next/prev`)
+- **Ctrl** — switch monitors instead of workspaces (`focus-monitor next/prev`)
+
+The `natural` and `wrap` settings apply to modifier gestures as well. Vertical
+(overview) swipes ignore modifier keys.
+
+The app keeps a lightweight heartbeat to the AeroSpace daemon and reconnects
+automatically, e.g. after AeroSpace restarts or launches after SwipeAeroSpace.
+
 ## Configuration
 
 On launch, SwipeAeroSpace reads `$HOME/.config/swipeareospace/config.toml`
@@ -65,9 +78,10 @@ swipeUpFingers = "Three"         # "Three" or "Four"
 show-empty-workspaces = false
 ```
 
-Use top-level keys as shown above. Click **Reload Config** in Settings after editing
-the file, or restart the app. The button appears when the config file exists,
-including when it is empty or invalid.
+Use top-level keys as shown above. The file is watched for changes and reloaded
+automatically, so edits take effect without restarting the app. A **Reload Config**
+button in Settings remains available as a manual fallback; it appears when the
+config file exists, including when it is empty or invalid.
 File-controlled settings are read-only in the Settings window; settings omitted
 from the file remain editable and are saved to UserDefaults. Launch at Login is
 managed separately by macOS and is not a config key. Menu bar visibility remains
