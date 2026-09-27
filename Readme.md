@@ -52,6 +52,9 @@ Hold a modifier key when a horizontal swipe starts to remap it:
 The `natural` and `wrap` settings apply to modifier gestures as well. Vertical
 (overview) swipes ignore modifier keys.
 
+The app keeps a lightweight heartbeat to the AeroSpace daemon and reconnects
+automatically, e.g. after AeroSpace restarts or launches after SwipeAeroSpace.
+
 ## Configuration
 
 On launch, SwipeAeroSpace reads `$HOME/.config/swipeareospace/config.toml`

@@ -124,6 +124,7 @@ class SwipeManager {
     private var socket: Socket? = nil
     private var readBuffer = Data()
     private var protocolVersion: Int = 1
+    private var heartbeatTimer: DispatchSourceTimer? = nil
     private let workQueue = DispatchQueue(label: "swipe.workspace", qos: .userInteractive)
     private let overlayController = OverlayPanelController()
 
@@ -595,10 +596,43 @@ class SwipeManager {
         CGEvent.tapEnable(tap: eventTap!, enable: true)
 
         connectSocket()
+        startHeartbeat()
+    }
+
+    /// Periodically probe the daemon so a restarted or quit AeroSpace is
+    /// detected (and reconnected to) without waiting for the next gesture to
+    /// fail. Also retries the initial connection if AeroSpace wasn't running
+    /// yet at launch.
+    private func startHeartbeat() {
+        let timer = DispatchSource.makeTimerSource(queue: workQueue)
+        timer.schedule(deadline: .now() + 5, repeating: 5)
+        timer.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            if self.socket == nil {
+                self.performConnectSocket()
+                return
+            }
+            switch self.runCommand(args: ["list-workspaces", "--focused"], stdin: "") {
+            case .success:
+                if !self.socketInfo.socketConnected {
+                    DispatchQueue.main.async {
+                        self.socketInfo.socketConnected = true
+                    }
+                }
+            case .failure(let error):
+                // runCommand already attempted one reconnect internally;
+                // the next heartbeat retries if that didn't heal it.
+                self.logger.error("Heartbeat failed: \(error.localizedDescription)")
+            }
+        }
+        timer.resume()
+        heartbeatTimer = timer
     }
 
     func stop() {
         logger.info("stop the app")
+        heartbeatTimer?.cancel()
+        heartbeatTimer = nil
         if let eventTap = eventTap {
             CGEvent.tapEnable(tap: eventTap, enable: false)
             CFMachPortInvalidate(eventTap)
