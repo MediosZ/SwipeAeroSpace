@@ -7,9 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		AA0000000000000000000001 /* TOMLKit in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000002 /* TOMLKit */; };
 		9E4137D22D97E63100634ACB /* BlueSocketTestCommonLibrary in Frameworks */ = {isa = PBXBuildFile; productRef = 9E4137D12D97E63100634ACB /* BlueSocketTestCommonLibrary */; };
 		9E4137D42D97E63100634ACB /* Socket in Frameworks */ = {isa = PBXBuildFile; productRef = 9E4137D32D97E63100634ACB /* Socket */; };
+		AA0000000000000000000001 /* TOMLKit in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000002 /* TOMLKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -268,7 +268,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				DEVELOPMENT_ASSET_PATHS = "\"SwipeAeroSpace/Preview Content\"";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -283,7 +283,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.5;
-				MARKETING_VERSION = 0.3.4;
+				MARKETING_VERSION = 0.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = club.mediosz.SwipeAeroSpace;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -300,7 +300,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				DEVELOPMENT_ASSET_PATHS = "\"SwipeAeroSpace/Preview Content\"";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -315,7 +315,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.5;
-				MARKETING_VERSION = 0.3.4;
+				MARKETING_VERSION = 0.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = club.mediosz.SwipeAeroSpace;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -347,14 +347,6 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		AA0000000000000000000003 /* XCRemoteSwiftPackageReference "TOMLKit" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/LebJe/TOMLKit.git";
-			requirement = {
-				kind = upToNextMinorVersion;
-				minimumVersion = 0.5.0;
-			};
-		};
 		9E4137D02D97E63100634ACB /* XCRemoteSwiftPackageReference "BlueSocket" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/Kitura/BlueSocket";
@@ -363,14 +355,17 @@
 				minimumVersion = 2.0.4;
 			};
 		};
+		AA0000000000000000000003 /* XCRemoteSwiftPackageReference "TOMLKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/LebJe/TOMLKit.git";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 0.5.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		AA0000000000000000000002 /* TOMLKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = AA0000000000000000000003 /* XCRemoteSwiftPackageReference "TOMLKit" */;
-			productName = TOMLKit;
-		};
 		9E4137D12D97E63100634ACB /* BlueSocketTestCommonLibrary */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 9E4137D02D97E63100634ACB /* XCRemoteSwiftPackageReference "BlueSocket" */;
@@ -380,6 +375,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 9E4137D02D97E63100634ACB /* XCRemoteSwiftPackageReference "BlueSocket" */;
 			productName = Socket;
+		};
+		AA0000000000000000000002 /* TOMLKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA0000000000000000000003 /* XCRemoteSwiftPackageReference "TOMLKit" */;
+			productName = TOMLKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
