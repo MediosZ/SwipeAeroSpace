@@ -40,7 +40,21 @@ First install Xcode, then there are two options:
 
 # Usage 
 
-After properly installation, you can use the 3-finger swipe to switch between AeroSpace workspaces.
+After installation, SwipeAeroSpace runs in the menu bar and turns trackpad
+gestures into AeroSpace commands.
+
+## Workspace Switching
+
+Swipe horizontally with three (or four) fingers to move between workspaces:
+
+- **Sensitivity** — how far fingers must travel per switch
+- **Natural swipe direction** — match trackpad scrolling, or invert it
+- **Wrap around** — swiping past the last workspace jumps back to the first
+- **Skip empty** — only land on workspaces that have windows; when the
+  focused workspace itself becomes empty, swipes go to the nearest occupied
+  workspace relative to it
+- **Multi-workspace swipe** — a longer swipe jumps several workspaces in one
+  gesture, up to a configurable maximum (2–9 steps)
 
 ## Modifier Gestures
 
@@ -51,6 +65,20 @@ Hold a modifier key when a horizontal swipe starts to remap it:
 
 The `natural` and `wrap` settings apply to modifier gestures as well. Vertical
 (overview) swipes ignore modifier keys.
+
+## Workspace Overview
+
+Swipe up to open a full-screen overview of all workspaces and their apps,
+grouped by monitor. Hovering a workspace previews it live, clicking jumps to
+it, and Escape or a swipe back down dismisses the overview. Empty workspaces
+can be included via a setting, and the overview is also available from the
+menu bar.
+
+## Menu Bar & Settings
+
+The menu bar icon offers Workspace Overview, Next/Prev Workspace, Settings,
+About, and Quit. Every gesture is configurable in the Settings window, and
+Launch at Login is supported.
 
 The app keeps a lightweight heartbeat to the AeroSpace daemon and reconnects
 automatically, e.g. after AeroSpace restarts or launches after SwipeAeroSpace.
