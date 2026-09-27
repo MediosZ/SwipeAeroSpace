@@ -118,6 +118,7 @@ class SwipeManager {
     private var state: GestureState = .ended
     private var swipeAxis: SwipeAxis = .undecided
     private var activeFingerCount: Int = 0
+    private var gestureModifiers: NSEvent.ModifierFlags = []
     private var gestureFocusDone: Bool = false
     private var pendingSwipeWork: DispatchWorkItem? = nil
     private var socket: Socket? = nil
@@ -392,8 +393,37 @@ class SwipeManager {
         }
     }
 
+    /// One swipe step. Modifier keys captured at gesture start remap the
+    /// target command: Shift carries the focused window to the neighbouring
+    /// workspace, Ctrl switches monitors instead of workspaces.
+    private func fireSwipeStep(
+        direction: Direction, modifiers: NSEvent.ModifierFlags
+    ) -> Result<String, SwipeError> {
+        var args: [String]
+        var stdin = ""
+        if modifiers.contains(.shift) {
+            args = ["move-node-to-workspace", direction.value]
+        } else if modifiers.contains(.control) {
+            args = ["focus-monitor", direction.value]
+        } else {
+            args = ["workspace", direction.value]
+            if skipEmpty {
+                if let ws = try? getNonEmptyWorkspaces().get(), !ws.isEmpty {
+                    stdin = ws
+                    args.append("--stdin")
+                }
+            }
+        }
+        if wrapWorkspace {
+            args.append("--wrap-around")
+        }
+        return runCommand(args: args, stdin: stdin)
+    }
+
     @discardableResult
-    private func switchWorkspace(direction: Direction) -> Result<
+    private func switchWorkspace(
+        direction: Direction, modifiers: NSEvent.ModifierFlags = []
+    ) -> Result<
         String, SwipeError
     > {
 
@@ -409,23 +439,7 @@ class SwipeManager {
             return res
         }
 
-        var args = ["workspace", direction.value]
-        if wrapWorkspace {
-            args.append("--wrap-around")
-        }
-        var stdin = ""
-        if skipEmpty {
-            res = getNonEmptyWorkspaces()
-            guard let ws = try? res.get() else {
-                return res
-            }
-            stdin = ws
-            if stdin != "" {
-                // explicitly insert '--stdin'
-                args.append("--stdin")
-            }
-        }
-        return runCommand(args: args, stdin: stdin)
+        return fireSwipeStep(direction: direction, modifiers: modifiers)
     }
 
     func nextWorkspace() {
@@ -641,7 +655,11 @@ class SwipeManager {
         if touchesCount == 0 {
             stopGesture()
         } else {
-            processTouches(touches: gestureTouches, count: touchesCount)
+            processTouches(
+                touches: gestureTouches,
+                count: touchesCount,
+                modifiers: nsEvent.modifierFlags
+            )
         }
     }
 
@@ -655,12 +673,19 @@ class SwipeManager {
         }
     }
 
-    private func processTouches(touches: Set<NSTouch>, count: Int) {
+    private func processTouches(
+        touches: Set<NSTouch>, count: Int, modifiers: NSEvent.ModifierFlags
+    ) {
         let hFingerCount = fingers == "Three" ? 3 : 4
         let vFingerCount = swipeUpFingers == "Three" ? 3 : 4
         if state != .began && (count == hFingerCount || count == vFingerCount) {
             state = .began
             activeFingerCount = count
+            // Latch the modifiers held when the gesture starts so keys typed
+            // mid-gesture don't change its meaning.
+            gestureModifiers = modifiers.intersection(
+                .deviceIndependentFlagsMask
+            )
         }
         // While axis is still undecided, cancel the gesture if the active
         // count drifts entirely outside the valid range (neither matches the
@@ -735,6 +760,7 @@ class SwipeManager {
                     }
                     let stepsToFire = abs(delta)
                     firedPosition = targetPosition
+                    let modifiers = gestureModifiers
 
                     // Cancel any pending work so we don't overshoot
                     pendingSwipeWork?.cancel()
@@ -756,18 +782,9 @@ class SwipeManager {
 
                         // Fire only the lean next/prev calls
                         for _ in 0..<stepsToFire {
-                            var args = ["workspace", direction.value]
-                            var stdin = ""
-                            if self.wrapWorkspace {
-                                args.append("--wrap-around")
-                            }
-                            if self.skipEmpty {
-                                if let ws = try? self.getNonEmptyWorkspaces().get(), !ws.isEmpty {
-                                    stdin = ws
-                                    args.append("--stdin")
-                                }
-                            }
-                            switch self.runCommand(args: args, stdin: stdin) {
+                            switch self.fireSwipeStep(
+                                direction: direction, modifiers: modifiers
+                            ) {
                             case .success: continue
                             case .failure(let err):
                                 self.logger.error("\(err.localizedDescription)")
@@ -789,6 +806,7 @@ class SwipeManager {
         swipeUpFired = false
         swipeAxis = .undecided
         activeFingerCount = 0
+        gestureModifiers = []
         gestureFocusDone = false
         prevTouchPositions.removeAll()
     }
@@ -814,9 +832,10 @@ class SwipeManager {
             } else {
                 accDisX < 0 ? .prev : .next
             }
+        let modifiers = gestureModifiers
         workQueue.async { [weak self] in
             guard let self = self else { return }
-            switch self.switchWorkspace(direction: direction) {
+            switch self.switchWorkspace(direction: direction, modifiers: modifiers) {
             case .success: return
             case .failure(let err):
                 self.logger.error("\(err.localizedDescription)")

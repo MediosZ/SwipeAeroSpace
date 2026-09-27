@@ -42,6 +42,16 @@ First install Xcode, then there are two options:
 
 After properly installation, you can use the 3-finger swipe to switch between AeroSpace workspaces.
 
+## Modifier Gestures
+
+Hold a modifier key when a horizontal swipe starts to remap it:
+
+- **Shift** — carry the focused window to the neighbouring workspace (`move-node-to-workspace next/prev`)
+- **Ctrl** — switch monitors instead of workspaces (`focus-monitor next/prev`)
+
+The `natural` and `wrap` settings apply to modifier gestures as well. Vertical
+(overview) swipes ignore modifier keys.
+
 ## Configuration
 
 On launch, SwipeAeroSpace reads `$HOME/.config/swipeareospace/config.toml`
