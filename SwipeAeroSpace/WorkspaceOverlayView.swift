@@ -510,6 +510,16 @@ class OverlayPanelController {
         overlayState.workspaces = workspaces
     }
 
+    /// A live preview runs a real `workspace` switch, which moves focus to the
+    /// target app's window; re-key the panel so subsequent keyboard events
+    /// (Enter, arrows, typing) keep reaching the overlay instead of the app
+    /// that just took focus.
+    func restorePanelKey() {
+        guard isVisible, let panel else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKey()
+    }
+
     func dismiss() {
         guard isVisible else { return }
         isVisible = false
@@ -556,8 +566,12 @@ class OverlayPanelController {
     private func handleKeyDown(_ event: NSEvent) -> Bool {
         guard !overlayState.workspaces.isEmpty else { return false }
         // Only treat bare keys as navigation/typing; Cmd+1 etc. must pass through.
-        guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty
-        else { return false }
+        // Arrow keys and numpad Enter carry inert .function/.numericPad flags,
+        // which must not count as real modifiers.
+        let realModifiers = event.modifierFlags
+            .intersection(.deviceIndependentFlagsMask)
+            .subtracting([.function, .numericPad])
+        guard realModifiers.isEmpty else { return false }
         switch event.keyCode {
         case 123:
             moveSelection(.left)
