@@ -684,7 +684,8 @@ class SwipeManager {
             tap: .cghidEventTap,
             place: .headInsertEventTap,
             options: .defaultTap,
-            eventsOfInterest: NSEvent.EventTypeMask.gesture.rawValue,
+            eventsOfInterest: NSEvent.EventTypeMask.gesture.rawValue
+                | NSEvent.EventTypeMask.keyDown.rawValue,
             callback: { proxy, type, cgEvent, me in
                 let wrapper = Unmanaged<SwipeManager>.fromOpaque(me!)
                     .takeUnretainedValue()
@@ -767,6 +768,17 @@ class SwipeManager {
         eventType: CGEventType,
         cgEvent: CGEvent
     ) -> Unmanaged<CGEvent>? {
+        // Intercept key events at the HID tap while the overview is visible so
+        // navigation keeps working even after a live preview handed focus to
+        // the target workspace's app. Must run on the main thread (the tap's
+        // run loop) since it drives SwiftUI state.
+        if eventType == .keyDown,
+            overlayController.isVisible,
+            let nsEvent = NSEvent(cgEvent: cgEvent),
+            overlayController.handleGlobalKeyDown(nsEvent)
+        {
+            return nil
+        }
         if eventType.rawValue == NSEvent.EventType.gesture.rawValue,
             let nsEvent = NSEvent(cgEvent: cgEvent)
         {
