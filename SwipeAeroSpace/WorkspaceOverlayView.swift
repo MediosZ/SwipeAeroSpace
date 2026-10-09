@@ -350,7 +350,9 @@ class OverlayPanelController {
     private var onDismissCallback: (() -> Void)?
     private var onSelectCallback: ((String) -> Void)?
     private var onSelectWindowCallback: ((String) -> Void)?
+    private var onPreviewCallback: ((String) -> Void)?
     private var typingTimeout: DispatchWorkItem?
+    private var previewDebounce: DispatchWorkItem?
     private let overlayState = OverlayState()
 
     func show(
@@ -385,6 +387,7 @@ class OverlayPanelController {
         }
         onSelectCallback = selectHandler
         onSelectWindowCallback = selectWindowHandler
+        onPreviewCallback = onPreview
 
         let view = WorkspaceOverlayView(
             onSelect: selectHandler,
@@ -507,15 +510,30 @@ class OverlayPanelController {
         overlayState.workspaces = workspaces
     }
 
+    /// Entry point for the CGEvent tap: called with every keyDown while the
+    /// overlay is visible, before the system dispatches the event, so keyboard
+    /// navigation works regardless of which app AeroSpace handed focus to.
+    /// Returns true when the event was consumed and should be swallowed.
+    func handleGlobalKeyDown(_ event: NSEvent) -> Bool {
+        if event.keyCode == 53 {
+            dismiss()
+            return true
+        }
+        return handleKeyDown(event)
+    }
+
     func dismiss() {
         guard isVisible else { return }
         isVisible = false
         typingTimeout?.cancel()
         typingTimeout = nil
+        previewDebounce?.cancel()
+        previewDebounce = nil
         onDismissCallback?()
         onDismissCallback = nil
         onSelectCallback = nil
         onSelectWindowCallback = nil
+        onPreviewCallback = nil
         overlayState.hoveredWorkspace = nil
         overlayState.hoveredWindow = nil
         overlayState.selection = nil
@@ -590,9 +608,13 @@ class OverlayPanelController {
         var selection = overlayState.selection
             ?? OverlaySelection(
                 workspaceIndex: workspaces.firstIndex(where: \.isFocused) ?? 0)
+        let previous = selection.workspaceIndex
         selection.typedBuffer = ""
         selection.move(direction, in: workspaces)
         overlayState.selection = selection
+        if selection.workspaceIndex != previous {
+            scheduleKeyboardPreview(workspaces[selection.workspaceIndex])
+        }
     }
 
     private func handleTypedCharacter(_ character: Character) {
@@ -624,9 +646,10 @@ class OverlayPanelController {
         }
     }
 
-    /// Keyboard navigation is highlight-only: a live `workspace` switch would
-    /// hand key focus to the target workspace's frontmost app, so arrows and
-    /// typing only move the selection. Enter performs the real switch.
+    /// Keyboard preview runs a real `workspace <name>` switch on every step;
+    /// coalesce rapid arrow presses so only the final stop is previewed.
+    /// Focus loss to the switched-to app is fine — the CGEvent tap routes
+    /// subsequent key events to the overlay before system dispatch.
     private func jumpSelection(to name: String) {
         guard
             let index = overlayState.workspaces.firstIndex(where: { $0.id == name })
@@ -637,6 +660,19 @@ class OverlayPanelController {
         selection.windowIndex = nil
         selection.typedBuffer = ""
         overlayState.selection = selection
+        scheduleKeyboardPreview(overlayState.workspaces[index])
+    }
+
+    private func scheduleKeyboardPreview(_ workspace: WorkspaceInfo) {
+        guard workspace.monitorId == overlayState.focusedMonitorId else { return }
+        previewDebounce?.cancel()
+        let name = workspace.id
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.isVisible else { return }
+            self.onPreviewCallback?(name)
+        }
+        previewDebounce = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06, execute: work)
     }
 
     private func activateSelection() {
