@@ -293,12 +293,6 @@ class SwipeManager {
                     onPreview: { wsName in
                         self?.workQueue.async {
                             _ = self?.runCommand(args: ["workspace", wsName], stdin: "")
-                            // The switch moves focus to the target workspace's
-                            // frontmost app; take key focus back so Enter and
-                            // arrow keys still reach the overlay mid-preview.
-                            DispatchQueue.main.async {
-                                self?.overlayController.restorePanelKey()
-                            }
                         }
                     },
                     onRevert: {
