@@ -101,6 +101,15 @@ UserDefaults. Only keys present in the file are overridden; other settings keep
 their saved values or built-in defaults. Removing the file restores saved settings
 after reloading or on the next launch. The file never overwrites UserDefaults.
 
+A fully commented template with every supported key is provided in
+[`config.example.toml`](config.example.toml). Copy it to the path above to get
+started:
+
+```bash
+mkdir -p ~/.config/swipeareospace
+cp config.example.toml ~/.config/swipeareospace/config.toml
+```
+
 Example with all supported keys and their built-in defaults:
 
 ```toml
