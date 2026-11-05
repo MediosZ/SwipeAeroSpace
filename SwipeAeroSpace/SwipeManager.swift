@@ -1280,7 +1280,7 @@ fileprivate final class CarbonShortcutRegistry {
             },
             0,
             nil,
-            nil,
+            Unmanaged.passUnretained(self).toOpaque(),
             &handler
         )
         guard error == noErr, let handler else { return }
