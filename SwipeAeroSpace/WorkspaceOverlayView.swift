@@ -510,6 +510,18 @@ class OverlayPanelController {
         overlayState.workspaces = workspaces
     }
 
+    /// Entry point for the CGEvent tap: called with every keyDown while the
+    /// overlay is visible, before the system dispatches the event, so keyboard
+    /// navigation works regardless of which app AeroSpace handed focus to.
+    /// Returns true when the event was consumed and should be swallowed.
+    func handleGlobalKeyDown(_ event: NSEvent) -> Bool {
+        if event.keyCode == 53 {
+            dismiss()
+            return true
+        }
+        return handleKeyDown(event)
+    }
+
     func dismiss() {
         guard isVisible else { return }
         isVisible = false
@@ -556,8 +568,12 @@ class OverlayPanelController {
     private func handleKeyDown(_ event: NSEvent) -> Bool {
         guard !overlayState.workspaces.isEmpty else { return false }
         // Only treat bare keys as navigation/typing; Cmd+1 etc. must pass through.
-        guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty
-        else { return false }
+        // Arrow keys and numpad Enter carry inert .function/.numericPad flags,
+        // which must not count as real modifiers.
+        let realModifiers = event.modifierFlags
+            .intersection(.deviceIndependentFlagsMask)
+            .subtracting([.function, .numericPad])
+        guard realModifiers.isEmpty else { return false }
         switch event.keyCode {
         case 123:
             moveSelection(.left)
@@ -630,6 +646,10 @@ class OverlayPanelController {
         }
     }
 
+    /// Keyboard preview runs a real `workspace <name>` switch on every step;
+    /// coalesce rapid arrow presses so only the final stop is previewed.
+    /// Focus loss to the switched-to app is fine — the CGEvent tap routes
+    /// subsequent key events to the overlay before system dispatch.
     private func jumpSelection(to name: String) {
         guard
             let index = overlayState.workspaces.firstIndex(where: { $0.id == name })
@@ -643,8 +663,6 @@ class OverlayPanelController {
         scheduleKeyboardPreview(overlayState.workspaces[index])
     }
 
-    /// Keyboard preview runs a real `workspace <name>` switch on every step;
-    /// coalesce rapid arrow presses so only the final stop is previewed.
     private func scheduleKeyboardPreview(_ workspace: WorkspaceInfo) {
         guard workspace.monitorId == overlayState.focusedMonitorId else { return }
         previewDebounce?.cancel()
