@@ -1,0 +1,71 @@
+# SwipeAeroSpace configuration template.
+#
+# Copy this file to `~/.config/swipeareospace/config.toml` (note the
+# directory spelling) and edit the values you want to override:
+#
+#     mkdir -p ~/.config/swipeareospace
+#     cp config.example.toml ~/.config/swipeareospace/config.toml
+#
+# Only keys present in the file override UserDefaults; every other setting
+# keeps its saved value or built-in default. Deleting the file (or a key)
+# restores the previous behavior after the app reloads it. The file is
+# watched for changes, so edits take effect without restarting the app.
+#
+# If the file contains invalid TOML, unknown keys, or invalid values, the
+# entire file is ignored and UserDefaults are used instead. The error is
+# shown in the Settings window.
+
+# --- Horizontal swipe ----------------------------------------------------
+
+# How far fingers must travel to trigger a workspace switch. Any finite
+# number greater than zero; lower is more sensitive.
+threshold = 1.0
+
+# Swiping past the last workspace jumps back to the first.
+wrap = false
+
+# Swipe direction matches finger movement, like trackpad scrolling.
+# Set to false to invert the direction.
+natural = true
+
+# Only land on workspaces that have windows.
+skip-empty = false
+
+# How many fingers trigger a horizontal workspace switch.
+# "Three" or "Four".
+fingers = "Three"
+
+# A longer swipe jumps multiple workspaces in one gesture.
+multiSwipe = true
+
+# Maximum workspaces a single swipe can jump (2 through 9).
+# Only used while multiSwipe is enabled.
+maxSteps = 5
+
+# --- Workspace overview --------------------------------------------------
+
+# Swipe up to open the full-screen workspace overview.
+swipeUpOverview = true
+
+# How many fingers trigger the overview swipe.
+# "Three" or "Four".
+swipeUpFingers = "Three"
+
+# Include empty workspaces in the overview.
+show-empty-workspaces = false
+
+# --- Keyboard shortcuts ---------------------------------------------------
+#
+# Global shortcuts default to unassigned so they don't steal an existing
+# AeroSpace or system binding. Uncomment and set them to enable.
+#
+# Format: `modifiers+key`, e.g. "cmd+shift+o". Modifiers are `cmd`, `option`
+# (or `alt`), `control` (or `ctrl`), `shift`, and `fn`; the symbols ⌘⌥⌃⇧ are
+# also accepted ("⌘⇧o"). The key is a letter, digit, punctuation character,
+# or a named key such as space, tab, return, escape, delete, up, down, left,
+# right, home, end, pageup, pagedown, or f1–f20. Shortcuts are
+# case-insensitive.
+
+# toggleOverviewShortcut = "cmd+shift+o"   # show or hide the workspace overview
+# nextWorkspaceShortcut = "cmd+shift+]"    # switch to the next workspace
+# prevWorkspaceShortcut = "cmd+shift+["    # switch to the previous workspace

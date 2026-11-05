@@ -1,4 +1,6 @@
+import Carbon.HIToolbox
 import Cocoa
+import Combine
 import Foundation
 import KeyboardShortcuts
 import Socket
@@ -9,6 +11,106 @@ extension KeyboardShortcuts.Name {
     static let toggleOverview = Self("toggleOverview")
     static let nextWorkspace = Self("nextWorkspace")
     static let prevWorkspace = Self("prevWorkspace")
+}
+
+extension KeyboardShortcuts.Shortcut {
+    init?(spec: ShortcutSpec) {
+        guard let key = Self.key(for: spec.key) else { return nil }
+        var flags: NSEvent.ModifierFlags = []
+        if spec.modifiers.contains("cmd") { flags.insert(.command) }
+        if spec.modifiers.contains("option") { flags.insert(.option) }
+        if spec.modifiers.contains("control") { flags.insert(.control) }
+        if spec.modifiers.contains("shift") { flags.insert(.shift) }
+        if spec.modifiers.contains("fn") { flags.insert(.function) }
+        self.init(key, modifiers: flags)
+    }
+
+    private static func key(for token: String) -> KeyboardShortcuts.Key? {
+        switch token {
+        case "a": .a
+        case "b": .b
+        case "c": .c
+        case "d": .d
+        case "e": .e
+        case "f": .f
+        case "g": .g
+        case "h": .h
+        case "i": .i
+        case "j": .j
+        case "k": .k
+        case "l": .l
+        case "m": .m
+        case "n": .n
+        case "o": .o
+        case "p": .p
+        case "q": .q
+        case "r": .r
+        case "s": .s
+        case "t": .t
+        case "u": .u
+        case "v": .v
+        case "w": .w
+        case "x": .x
+        case "y": .y
+        case "z": .z
+        case "0": .zero
+        case "1": .one
+        case "2": .two
+        case "3": .three
+        case "4": .four
+        case "5": .five
+        case "6": .six
+        case "7": .seven
+        case "8": .eight
+        case "9": .nine
+        case "-": .minus
+        case "=": .equal
+        case "[": .leftBracket
+        case "]": .rightBracket
+        case "\\": .backslash
+        case ";": .semicolon
+        case "'": .quote
+        case ",": .comma
+        case ".": .period
+        case "/": .slash
+        case "`": .backtick
+        case "space": .space
+        case "tab": .tab
+        case "return": .`return`
+        case "escape": .escape
+        case "delete": .delete
+        case "forwarddelete": .deleteForward
+        case "home": .home
+        case "end": .end
+        case "pageup": .pageUp
+        case "pagedown": .pageDown
+        case "up": .upArrow
+        case "down": .downArrow
+        case "left": .leftArrow
+        case "right": .rightArrow
+        case "f1": .f1
+        case "f2": .f2
+        case "f3": .f3
+        case "f4": .f4
+        case "f5": .f5
+        case "f6": .f6
+        case "f7": .f7
+        case "f8": .f8
+        case "f9": .f9
+        case "f10": .f10
+        case "f11": .f11
+        case "f12": .f12
+        case "f13": .f13
+        case "f14": .f14
+        case "f15": .f15
+        case "f16": .f16
+        case "f17": .f17
+        case "f18": .f18
+        case "f19": .f19
+        case "f20": .f20
+        default: nil
+        }
+    }
 }
 
 enum Direction {
@@ -134,6 +236,8 @@ class SwipeManager {
     private var heartbeatTimer: DispatchSourceTimer? = nil
     private let workQueue = DispatchQueue(label: "swipe.workspace", qos: .userInteractive)
     private let overlayController = OverlayPanelController()
+    private let configShortcutRegistry = CarbonShortcutRegistry()
+    private var configObserver: AnyCancellable?
 
     private var logger: Logger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "club.mediosz.SwipeAeroSpace",
@@ -679,6 +783,8 @@ class SwipeManager {
             return
         }
         registerShortcuts()
+        observeConfigShortcuts()
+        applyConfigShortcuts()
         logger.info("SwipeManager start")
         eventTap = CGEvent.tapCreate(
             tap: .cghidEventTap,
@@ -746,6 +852,9 @@ class SwipeManager {
 
     func stop() {
         unregisterShortcuts()
+        configObserver?.cancel()
+        configObserver = nil
+        configShortcutRegistry.removeAll()
         logger.info("stop the app")
         heartbeatTimer?.cancel()
         heartbeatTimer = nil
@@ -813,6 +922,56 @@ class SwipeManager {
         // disable() which leaves handlers attached.
         for name in [KeyboardShortcuts.Name.toggleOverview, .nextWorkspace, .prevWorkspace] {
             KeyboardShortcuts.removeHandler(for: name)
+        }
+    }
+
+    private func observeConfigShortcuts() {
+        guard configObserver == nil else { return }
+        configObserver = Configuration.shared.objectWillChange.sink { [weak self] _ in
+            // objectWillChange fires before reload() swaps the snapshot, so
+            // defer one run loop tick to read the updated values.
+            DispatchQueue.main.async {
+                self?.applyConfigShortcuts()
+            }
+        }
+    }
+
+    /// Applies shortcut overrides from config.toml. File values are an overlay:
+    /// they register a Carbon hotkey directly and suspend the user's saved
+    /// shortcut, so removing the key restores the saved shortcut without ever
+    /// overwriting UserDefaults.
+    private func applyConfigShortcuts() {
+        let values = Configuration.shared.values
+        let shortcuts: [(key: String, name: KeyboardShortcuts.Name)] = [
+            ("toggleOverviewShortcut", .toggleOverview),
+            ("nextWorkspaceShortcut", .nextWorkspace),
+            ("prevWorkspaceShortcut", .prevWorkspace),
+        ]
+        configShortcutRegistry.removeAll()
+        for (key, name) in shortcuts {
+            guard let spec = values[key] as? ShortcutSpec,
+                  let shortcut = KeyboardShortcuts.Shortcut(spec: spec)
+            else {
+                KeyboardShortcuts.enable(name)
+                continue
+            }
+            KeyboardShortcuts.disable(name)
+            configShortcutRegistry.register(shortcut) { [weak self] in
+                self?.runShortcutAction(for: name)
+            }
+        }
+    }
+
+    private func runShortcutAction(for name: KeyboardShortcuts.Name) {
+        switch name {
+        case .toggleOverview:
+            toggleWorkspaceOverview()
+        case .nextWorkspace:
+            nextWorkspace()
+        case .prevWorkspace:
+            prevWorkspace()
+        default:
+            break
         }
     }
 
@@ -1078,5 +1237,97 @@ class SwipeManager {
             Float(position.x - prevPosition.x),
             Float(position.y - prevPosition.y)
         )
+    }
+}
+
+/// Registers Carbon hotkeys without persisting them, used for config.toml
+/// shortcut overrides. The KeyboardShortcuts package always round-trips
+/// shortcuts through UserDefaults, so file-driven shortcuts need their own
+/// registration to stay a read-only overlay.
+fileprivate final class CarbonShortcutRegistry {
+    // "SWAS" — a signature distinct from the KeyboardShortcuts package's, so
+    // the two event handlers at the dispatcher don't swallow each other.
+    private static let signature: UInt32 = 0x53574153
+    private var nextID: UInt32 = 1
+    private var hotKeys: [UInt32: (ref: EventHotKeyRef, action: () -> Void)] = [:]
+    private var eventHandler: EventHandlerRef?
+
+    func register(_ shortcut: KeyboardShortcuts.Shortcut, action: @escaping () -> Void) {
+        let id = nextID
+        nextID += 1
+        var ref: EventHotKeyRef?
+        let error = RegisterEventHotKey(
+            UInt32(shortcut.carbonKeyCode),
+            UInt32(shortcut.carbonModifiers),
+            EventHotKeyID(signature: Self.signature, id: id),
+            GetEventDispatcherTarget(),
+            0,
+            &ref
+        )
+        guard error == noErr, let ref else { return }
+        hotKeys[id] = (ref, action)
+        installHandlerIfNeeded()
+    }
+
+    func removeAll() {
+        for entry in hotKeys.values {
+            UnregisterEventHotKey(entry.ref)
+        }
+        hotKeys.removeAll()
+    }
+
+    private func installHandlerIfNeeded() {
+        guard eventHandler == nil, let dispatcher = GetEventDispatcherTarget() else {
+            return
+        }
+        var handler: EventHandlerRef?
+        let error = InstallEventHandler(
+            dispatcher,
+            { _, event, userData in
+                guard let userData else { return OSStatus(eventNotHandledErr) }
+                let registry = Unmanaged<CarbonShortcutRegistry>
+                    .fromOpaque(userData)
+                    .takeUnretainedValue()
+                return registry.handle(event)
+            },
+            0,
+            nil,
+            Unmanaged.passUnretained(self).toOpaque(),
+            &handler
+        )
+        guard error == noErr, let handler else { return }
+        eventHandler = handler
+        let types = [
+            EventTypeSpec(
+                eventClass: OSType(kEventClassKeyboard),
+                eventKind: UInt32(kEventHotKeyPressed)
+            )
+        ]
+        AddEventTypesToHandler(handler, 1, types)
+    }
+
+    private func handle(_ event: EventRef?) -> OSStatus {
+        guard let event else { return OSStatus(eventNotHandledErr) }
+        guard Int(GetEventKind(event)) == kEventHotKeyPressed else {
+            return OSStatus(eventNotHandledErr)
+        }
+        var hotKeyID = EventHotKeyID()
+        let error = GetEventParameter(
+            event,
+            UInt32(kEventParamDirectObject),
+            UInt32(typeEventHotKeyID),
+            nil,
+            MemoryLayout<EventHotKeyID>.size,
+            nil,
+            &hotKeyID
+        )
+        guard error == noErr, hotKeyID.signature == Self.signature else {
+            return OSStatus(eventNotHandledErr)
+        }
+        guard let entry = hotKeys[hotKeyID.id] else {
+            return OSStatus(eventNotHandledErr)
+        }
+        entry.action()
+        return noErr
     }
 }

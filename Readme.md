@@ -101,6 +101,15 @@ UserDefaults. Only keys present in the file are overridden; other settings keep
 their saved values or built-in defaults. Removing the file restores saved settings
 after reloading or on the next launch. The file never overwrites UserDefaults.
 
+A fully commented template with every supported key is provided in
+[`config.example.toml`](config.example.toml). Copy it to the path above to get
+started:
+
+```bash
+mkdir -p ~/.config/swipeareospace
+cp config.example.toml ~/.config/swipeareospace/config.toml
+```
+
 Example with all supported keys and their built-in defaults:
 
 ```toml
@@ -114,7 +123,17 @@ maxSteps = 5                     # Integer from 2 through 9
 swipeUpOverview = true
 swipeUpFingers = "Three"         # "Three" or "Four"
 show-empty-workspaces = false
+toggleOverviewShortcut = "cmd+shift+o"
+nextWorkspaceShortcut = "cmd+shift+]"
+prevWorkspaceShortcut = "cmd+shift+["
 ```
+
+Shortcut values use the form `modifiers+key`, e.g. `cmd+shift+o`. Modifiers
+are `cmd`, `option` (or `alt`), `control` (or `ctrl`), `shift`, and `fn`;
+symbols `⌘⌥⌃⇧` are also accepted (`⌘⇧o`). The key is a letter, digit, or
+punctuation character, or a named key such as `space`, `tab`, `return`,
+`escape`, `delete`, `up`, `down`, `left`, `right`, `home`, `end`, `pageup`,
+`pagedown`, or `f1`–`f20`. Shortcuts are case-insensitive.
 
 Use top-level keys as shown above. The file is watched for changes and reloaded
 automatically, so edits take effect without restarting the app. A **Reload Config**
