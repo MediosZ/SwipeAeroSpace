@@ -219,10 +219,149 @@ final class Configuration: ObservableObject {
                         throw invalid("\(key.stringValue) must be \"Three\" or \"Four\"")
                     }
                     values[key.stringValue] = value
+                case "toggleOverviewShortcut", "nextWorkspaceShortcut", "prevWorkspaceShortcut":
+                    let raw = try container.decode(String.self, forKey: key)
+                    do {
+                        values[key.stringValue] = try ShortcutSpec.parse(raw)
+                    } catch {
+                        throw invalid("\(key.stringValue) is not a valid shortcut: \(error.localizedDescription)")
+                    }
                 default:
                     throw invalid("Unknown setting: \(key.stringValue)")
                 }
             }
+        }
+    }
+}
+
+/// A validated keyboard shortcut parsed from config.toml. Kept free of AppKit
+/// and the KeyboardShortcuts package so the configuration layer stays testable
+/// in the SwiftPM harness; SwipeManager maps it onto a real shortcut.
+struct ShortcutSpec: Equatable {
+    let key: String
+    let modifiers: Set<String>
+
+    private static let modifierAliases: [String: String] = [
+        "cmd": "cmd", "command": "cmd",
+        "option": "option", "opt": "option", "alt": "option",
+        "control": "control", "ctrl": "control",
+        "shift": "shift",
+        "fn": "fn", "function": "fn",
+    ]
+
+    private static let keyAliases: [String: String] = [
+        "enter": "return",
+        "esc": "escape",
+        "backspace": "delete",
+        "deleteforward": "forwarddelete", "forward-delete": "forwarddelete",
+        "forward_delete": "forwarddelete",
+        "page-up": "pageup", "page_up": "pageup",
+        "page-down": "pagedown", "page_down": "pagedown",
+        "uparrow": "up", "up-arrow": "up", "up_arrow": "up",
+        "downarrow": "down", "down-arrow": "down", "down_arrow": "down",
+        "leftarrow": "left", "left-arrow": "left", "left_arrow": "left",
+        "rightarrow": "right", "right-arrow": "right", "right_arrow": "right",
+        "↑": "up", "↓": "down", "←": "left", "→": "right",
+        "↩": "return", "⏎": "return", "⎋": "escape", "⇥": "tab",
+        "⌫": "delete", "⌦": "forwarddelete",
+        "⇞": "pageup", "⇟": "pagedown", "↖": "home", "↘": "end",
+    ]
+
+    private static let validKeys: Set<String> = {
+        var keys: Set<String> = [
+            "space", "tab", "return", "escape", "delete", "forwarddelete",
+            "home", "end", "pageup", "pagedown", "up", "down", "left", "right",
+        ]
+        for number in 1...20 {
+            keys.insert("f\(number)")
+        }
+        for character in "abcdefghijklmnopqrstuvwxyz0123456789-=[]\\;',./`" {
+            keys.insert(String(character))
+        }
+        return keys
+    }()
+
+    static func parse(_ raw: String) throws -> ShortcutSpec {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw ShortcutParseError.empty
+        }
+
+        // Expand modifier symbols into delimited tokens so a single split works.
+        var expanded = trimmed
+        for (symbol, name) in [("⌘", "cmd"), ("⌥", "option"), ("⌃", "control"), ("⇧", "shift")] {
+            expanded = expanded.replacingOccurrences(of: symbol, with: "+\(name)+")
+        }
+
+        let tokens = expanded
+            .split(separator: "+", omittingEmptySubsequences: true)
+            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+        guard !tokens.isEmpty else {
+            throw ShortcutParseError.empty
+        }
+
+        var modifiers = Set<String>()
+        for token in tokens.dropLast() {
+            guard let canonical = modifierAliases[token] else {
+                throw ShortcutParseError.unknownModifier(token)
+            }
+            modifiers.insert(canonical)
+        }
+
+        let keyToken = tokens.last!
+        let canonicalKey = keyAliases[keyToken] ?? keyToken
+        guard validKeys.contains(canonicalKey) else {
+            throw ShortcutParseError.unknownKey(keyToken)
+        }
+        return ShortcutSpec(key: canonicalKey, modifiers: modifiers)
+    }
+
+    /// Human-readable form, e.g. "⌃⌥⇧⌘O", matching what the Recorder displays.
+    var displayString: String {
+        let ordered: [(modifier: String, symbol: String)] = [
+            ("control", "⌃"), ("option", "⌥"), ("shift", "⇧"), ("cmd", "⌘"), ("fn", "fn"),
+        ]
+        let prefix = ordered
+            .filter { modifiers.contains($0.modifier) }
+            .map(\.symbol)
+            .joined()
+        return prefix + keyDisplayString
+    }
+
+    private var keyDisplayString: String {
+        switch key {
+        case "space": "Space"
+        case "tab": "⇥"
+        case "return": "↩"
+        case "escape": "⎋"
+        case "delete": "⌫"
+        case "forwarddelete": "⌦"
+        case "home": "↖"
+        case "end": "↘"
+        case "pageup": "⇞"
+        case "pagedown": "⇟"
+        case "up": "↑"
+        case "down": "↓"
+        case "left": "←"
+        case "right": "→"
+        default: key.uppercased()
+        }
+    }
+}
+
+enum ShortcutParseError: LocalizedError {
+    case empty
+    case unknownModifier(String)
+    case unknownKey(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .empty:
+            "shortcut must not be empty"
+        case .unknownModifier(let token):
+            "unknown modifier \"\(token)\""
+        case .unknownKey(let token):
+            "unknown key \"\(token)\""
         }
     }
 }

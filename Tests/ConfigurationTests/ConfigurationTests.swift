@@ -70,15 +70,61 @@ final class ConfigurationTests: XCTestCase {
         swipeUpOverview = false
         swipeUpFingers = "Three"
         show-empty-workspaces = true
+        toggleOverviewShortcut = "cmd+shift+o"
+        nextWorkspaceShortcut = "⌘⇧]"
+        prevWorkspaceShortcut = "⌃⌥⇧["
         """)
-        XCTAssertEqual(values.count, 10)
+        XCTAssertEqual(values.count, 13)
         XCTAssertEqual(values["threshold"] as? Double, 1.0)
         XCTAssertEqual(values["maxSteps"] as? Int, 9)
         XCTAssertEqual(values["fingers"] as? String, "Four")
+        XCTAssertEqual(
+            values["toggleOverviewShortcut"] as? ShortcutSpec,
+            ShortcutSpec(key: "o", modifiers: ["cmd", "shift"])
+        )
+        XCTAssertEqual(
+            values["nextWorkspaceShortcut"] as? ShortcutSpec,
+            ShortcutSpec(key: "]", modifiers: ["cmd", "shift"])
+        )
+        XCTAssertEqual(
+            values["prevWorkspaceShortcut"] as? ShortcutSpec,
+            ShortcutSpec(key: "[", modifiers: ["control", "option", "shift"])
+        )
     }
 
     func testIntegerThreshold() throws {
         XCTAssertEqual(try Configuration.parse("threshold = 2")["threshold"] as? Double, 2.0)
+    }
+
+    func testShortcutParsing() throws {
+        XCTAssertEqual(
+            try ShortcutSpec.parse("cmd+shift+o"),
+            ShortcutSpec(key: "o", modifiers: ["cmd", "shift"])
+        )
+        XCTAssertEqual(
+            try ShortcutSpec.parse("⌘⇧O"),
+            ShortcutSpec(key: "o", modifiers: ["cmd", "shift"])
+        )
+        XCTAssertEqual(
+            try ShortcutSpec.parse("ctrl+alt+delete"),
+            ShortcutSpec(key: "delete", modifiers: ["control", "option"])
+        )
+        XCTAssertEqual(
+            try ShortcutSpec.parse("fn+f5"),
+            ShortcutSpec(key: "f5", modifiers: ["fn"])
+        )
+        XCTAssertEqual(
+            try ShortcutSpec.parse("return"),
+            ShortcutSpec(key: "return", modifiers: [])
+        )
+        XCTAssertEqual(try ShortcutSpec.parse("cmd+space").key, "space")
+        XCTAssertEqual(try ShortcutSpec.parse("↑").key, "up")
+        XCTAssertEqual(try ShortcutSpec.parse("⌘⌫").key, "delete")
+    }
+
+    func testShortcutDisplayString() throws {
+        XCTAssertEqual(try ShortcutSpec.parse("cmd+shift+o").displayString, "⇧⌘O")
+        XCTAssertEqual(try ShortcutSpec.parse("ctrl+alt+delete").displayString, "⌃⌥⌫")
     }
 
     func testEmptyFileHasNoOverrides() throws {
@@ -93,6 +139,9 @@ final class ConfigurationTests: XCTestCase {
             "maxSteps = 1", "maxSteps = 10", "threshold = 0", "threshold = -1.0",
             "threshold = nan", "threshold = inf", "fingers = 'Five'", "swipeUpFingers = 3",
             "menuBarExtraIsInserted = false", "typo = true", "[unexpected]\nwrap = true",
+            "toggleOverviewShortcut = ''", "toggleOverviewShortcut = 'bogus'",
+            "toggleOverviewShortcut = 'cmd+'", "toggleOverviewShortcut = 'cmd+shift'",
+            "nextWorkspaceShortcut = 'shift+'", "prevWorkspaceShortcut = 'foo+bar+o'",
         ] {
             let config = try load("natural = false\n" + invalid)
             XCTAssertNotNil(config.errorMessage, invalid)

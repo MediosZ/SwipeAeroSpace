@@ -196,24 +196,27 @@ struct SettingsView: View {
             sectionHeader("Keyboard Shortcuts")
             VStack(alignment: .leading, spacing: 12) {
                 settingRow(
+                    key: "toggleOverviewShortcut",
                     title: "Workspace Overview",
                     description: "Global shortcut to show or hide the workspace overview"
                 ) {
-                    KeyboardShortcuts.Recorder(for: .toggleOverview)
+                    shortcutControl(key: "toggleOverviewShortcut", name: .toggleOverview)
                 }
 
                 settingRow(
+                    key: "nextWorkspaceShortcut",
                     title: "Next Workspace",
                     description: "Global shortcut to switch to the next AeroSpace workspace"
                 ) {
-                    KeyboardShortcuts.Recorder(for: .nextWorkspace)
+                    shortcutControl(key: "nextWorkspaceShortcut", name: .nextWorkspace)
                 }
 
                 settingRow(
+                    key: "prevWorkspaceShortcut",
                     title: "Previous Workspace",
                     description: "Global shortcut to switch to the previous AeroSpace workspace"
                 ) {
-                    KeyboardShortcuts.Recorder(for: .prevWorkspace)
+                    shortcutControl(key: "prevWorkspaceShortcut", name: .prevWorkspace)
                 }
             }
             .padding(.horizontal, 32)
@@ -263,6 +266,16 @@ struct SettingsView: View {
     private func sectionDivider() -> some View {
         Divider()
             .padding(.horizontal, 24)
+    }
+
+    @ViewBuilder
+    private func shortcutControl(key: String, name: KeyboardShortcuts.Name) -> some View {
+        if let spec = configuration.values[key] as? ShortcutSpec {
+            Text(spec.displayString)
+                .foregroundStyle(.secondary)
+        } else {
+            KeyboardShortcuts.Recorder(for: name)
+        }
     }
 
     private func settingRow<Content: View>(
