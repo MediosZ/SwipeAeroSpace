@@ -142,6 +142,7 @@ enum SwipeAxis {
 
 enum SwipeError: Error {
     case SocketError(String)
+    case SocketTimeout
     case CommandFail(String)
     case Unknown(String)
 }
@@ -234,6 +235,10 @@ class SwipeManager {
     private var readBuffer = Data()
     private var protocolVersion: Int = 1
     private var heartbeatTimer: DispatchSourceTimer? = nil
+    // AeroSpace answers in milliseconds. Without a limit, one request that
+    // never gets an answer blocks workQueue forever and every later swipe
+    // queues up behind it.
+    private static let socketTimeoutMs: UInt = 3000
     private let workQueue = DispatchQueue(label: "swipe.workspace", qos: .userInteractive)
     private let overlayController = OverlayPanelController()
     private let configShortcutRegistry = CarbonShortcutRegistry()
@@ -252,7 +257,10 @@ class SwipeManager {
             var temp = Data()
             let bytesRead = try socket.read(into: &temp)
             if bytesRead == 0 {
-                throw SwipeError.SocketError("Socket connection closed by peer")
+                if socket.remoteConnectionClosed {
+                    throw SwipeError.SocketError("Socket connection closed by peer")
+                }
+                throw SwipeError.SocketTimeout
             }
             readBuffer.append(temp)
         }
@@ -313,11 +321,14 @@ class SwipeManager {
                     from: responseData
                 )
             } else {
-                let _ = try Socket.wait(
+                let ready = try Socket.wait(
                     for: [socket],
-                    timeout: 0,
-                    waitForever: true
+                    timeout: Self.socketTimeoutMs,
+                    waitForever: false
                 )
+                if ready == nil {
+                    throw SwipeError.SocketTimeout
+                }
                 var answer = Data()
                 try socket.read(into: &answer)
                 result = try JSONDecoder().decode(
@@ -330,14 +341,26 @@ class SwipeManager {
             }
             return .success(result.stdout)
 
+        } catch SwipeError.SocketTimeout {
+            // The answer may still arrive later and would be read as the
+            // answer to the next request, so drop this connection. Don't
+            // rerun the command: the server may already have acted on it.
+            logger.error("AeroSpace did not answer in time, reconnecting socket")
+            connectSocket(reconnect: true)
+            return .failure(.SocketTimeout)
         } catch let error {
-            guard let socketError = error as? Socket.Error else {
+            let description: String
+            if let socketError = error as? Socket.Error {
+                description = socketError.localizedDescription
+            } else if case SwipeError.SocketError(let message) = error {
+                description = message
+            } else {
                 return .failure(.Unknown(error.localizedDescription))
             }
             // if we encouter the socket error
             // try reconnect the socket and rerun the command only once.
             if retry {
-                return .failure(.SocketError(socketError.localizedDescription))
+                return .failure(.SocketError(description))
             }
             logger.info("Trying reconnect socket...")
             connectSocket(reconnect: true)
@@ -726,12 +749,15 @@ class SwipeManager {
         logger.info("Detected AeroSpace protocol version: \(self.protocolVersion)")
         
         do {
+            socket?.close()
             socket = try Socket.create(
                 family: .unix,
                 type: .stream,
                 proto: .unix
             )
             try socket?.connect(to: socket_path)
+            try socket?.setReadTimeout(value: Self.socketTimeoutMs)
+            try socket?.setWriteTimeout(value: Self.socketTimeoutMs)
             
             readBuffer.removeAll()
             
