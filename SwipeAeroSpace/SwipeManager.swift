@@ -275,6 +275,9 @@ class SwipeManager {
         guard let socket = socket else {
             return .failure(.SocketError("No socket created"))
         }
+        // Once the whole request is written the server may act on it, even
+        // if we never see the answer.
+        var requestSent = false
         do {
             let request: Data
             if protocolVersion == 1 {
@@ -304,6 +307,7 @@ class SwipeManager {
             }
             // Send JSON bytes
             try socket.write(from: request)
+            requestSent = true
 
             let result: ServerAnswer
             if protocolVersion == 1 {
@@ -357,7 +361,14 @@ class SwipeManager {
             } else {
                 return .failure(.Unknown(error.localizedDescription))
             }
-            // if we encouter the socket error
+            if requestSent {
+                // The server may already have run the command, so reconnect
+                // for the next one but don't rerun this one.
+                logger.error("Lost the socket before AeroSpace answered, reconnecting without rerunning the command")
+                connectSocket(reconnect: true)
+                return .failure(.SocketError(description))
+            }
+            // The request never fully reached the server, so
             // try reconnect the socket and rerun the command only once.
             if retry {
                 return .failure(.SocketError(description))
