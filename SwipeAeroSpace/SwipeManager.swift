@@ -242,6 +242,7 @@ class SwipeManager {
     private let workQueue = DispatchQueue(label: "swipe.workspace", qos: .userInteractive)
     private let overlayController = OverlayPanelController()
     private let configShortcutRegistry = CarbonShortcutRegistry()
+    private let touchDeviceRecovery = TouchDeviceRecovery()
     private var configObserver: AnyCancellable?
 
     private var logger: Logger = Logger(
@@ -852,6 +853,7 @@ class SwipeManager {
             CFRunLoopMode.commonModes
         )
         CGEvent.tapEnable(tap: eventTap!, enable: true)
+        touchDeviceRecovery.start()
 
         connectSocket()
         startHeartbeat()
@@ -893,6 +895,7 @@ class SwipeManager {
         configObserver = nil
         configShortcutRegistry.removeAll()
         logger.info("stop the app")
+        touchDeviceRecovery.stop()
         heartbeatTimer?.cancel()
         heartbeatTimer = nil
         if let eventTap = eventTap {
@@ -1014,6 +1017,7 @@ class SwipeManager {
 
     private func touchEventHandler(_ nsEvent: NSEvent) {
         let touches = nsEvent.allTouches()
+        touchDeviceRecovery.recordGestureEvent(touchCount: touches.count)
 
         // Sometimes there are empty touch events that we have to skip. There are no empty touch events if Mission Control or App Expose use 3-finger swipes though.
         if touches.isEmpty {
